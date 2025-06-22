@@ -1,0 +1,54 @@
+---
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Badge } from '@components/starwind/badge';
+import { Icon } from 'astro-icon/components';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import type { SidebarCategory } from '@lib/magazine'; // On importe le type
+
+interface Props {
+  categories: SidebarCategory[]; // Reçoit directement les données
+  parentCategorySlug: string; // Reçoit le slug parent pour construire l'URL
+}
+
+const { categories, parentCategorySlug } = Astro.props;
+const lang = Astro.currentLocale;
+
+const translations = {
+  fr: { title: 'Catégories', empty: 'Aucune catégorie disponible.' },
+  en: { title: 'Categories', empty: 'No category available.' },
+  es: { title: 'Categorías', empty: 'Ninguna categoría disponible.' }
+};
+const t = translations[lang] ?? translations.fr;
+---
+
+<Card>
+  <CardHeader>
+    <CardTitle class="flex items-center gap-2">
+      <Icon name="openmoji:bookmark-tabs" class="h-5 w-5" />
+      {t.title}
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    {categories.length > 0 ? (
+      <ul class="space-y-2">
+        {categories.map(cat => (
+          <li>
+            <!-- URL propre et robuste -->
+            <a 
+              href={getRelativeLocaleUrl(lang, `${parentCategorySlug}/${cat.seoSlug}`)} 
+              class="flex justify-between items-center text-gray-600 hover:text-blue-600 font-medium p-2 -m-2 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <span>{cat.name}</span>
+              <Badge variant="secondary">{cat.articlesCount}</Badge>
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div class="flex flex-col items-center py-8">
+        <Icon name="openmoji:desert" class="h-16 w-16 mx-auto text-gray-400 mb-4" />
+        <span class="text-gray-500 text-sm">{t.empty}</span>
+      </div>
+    )}
+  </CardContent>
+</Card>

@@ -1,0 +1,78 @@
+---
+export const prerender = false;
+
+import BaseLayout from '@layouts/Layout.astro';
+import { getMagazineIndexPageData } from '@lib/magazine';
+import type { MagazinePageData } from '@lib/magazine';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { useTranslations } from '@i18n/utils';
+import PageHeader from '@components/blog/PageHeader.astro';
+import ArticleCard from '@components/blog/ArticleCard.astro';
+import NewsletterCard from '@components/blog/NewsletterCard.astro';
+import ContributeCard from '@components/blog/ContributeCard.astro';
+import CategoriesWithCount from '@components/blog/CategoriesWithCount.astro';
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Icon } from 'astro-icon/components';
+
+const lang = Astro.currentLocale;
+const t = useTranslations(lang);
+const pathSegments = Astro.url.pathname.split('/').filter(Boolean);
+const magazineSlug = pathSegments[1];
+
+if (!magazineSlug) {
+  throw new AstroError('Bad Request', 'Impossible de déterminer le slug de la section magazine depuis l\'URL.');
+}
+
+const data: MagazinePageData = await getMagazineIndexPageData(lang, magazineSlug);
+---
+
+<BaseLayout title={data.pageTitle} description={data.pageDescription}>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <PageHeader
+      title={data.pageTitle}
+      description={data.pageDescription}
+      icon={data.pageIcon || 'openmoji:newspaper'}
+      breadcrumbItems={[
+        { label: t('home.breadcrumb'), url: getRelativeLocaleUrl(lang, '/') },
+        { label: data.pageTitle, url: getRelativeLocaleUrl(lang, magazineSlug), isCurrent: true },
+      ]}
+    />
+    <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+      <div class="lg:col-span-2">
+        <section class="mb-12">
+          <h2 class="text-3xl font-bold text-gray-800 mb-6">{t('magazine.index.featured')}</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {data.featuredArticles.length > 0 ? (
+              data.featuredArticles.map(article => <ArticleCard {article} parentCategorySlug={magazineSlug} variant="featured" />)
+            ) : <p class="text-gray-500 col-span-full">{t('magazine.index.noFeatured')}</p>}
+          </div>
+        </section>
+        <section>
+          <h2 class="text-3xl font-bold text-gray-800 mb-6">{t('magazine.index.recent')}</h2>
+          <div class="space-y-8">
+            {data.recentArticles.length > 0 ? (
+              data.recentArticles.map(article => <ArticleCard {article} parentCategorySlug={magazineSlug} variant="horizontal" />)
+            ) : <p class="text-gray-500">{t('magazine.index.noRecent')}</p>}
+          </div>
+        </section>
+      </div>
+      <aside class="space-y-8 sticky top-8 mt-12 lg:mt-0">
+        <CategoriesWithCount categories={data.sidebarCategories} parentCategorySlug={magazineSlug} />
+        <NewsletterCard />
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2"><Icon name="openmoji:rocket" class="h-5 w-5" />{t('magazine.index.popular')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.sidebarPopularArticles.length > 0 ? (
+              <ul class="space-y-4">
+                {data.sidebarPopularArticles.map(article => <li><ArticleCard {article} parentCategorySlug={magazineSlug} variant="compact" /></li>)}
+              </ul>
+            ) : <p class="text-gray-500 text-sm">{t('magazine.index.noPopular')}</p>}
+          </CardContent>
+        </Card>
+        <ContributeCard />
+      </aside>
+    </div>
+  </main>
+</BaseLayout>

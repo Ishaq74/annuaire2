@@ -1,0 +1,42 @@
+---
+import "../styles/global.css";
+import "../styles/starwind.css";
+import { getMenuItems } from "@lib/menu";
+import Header from "@components/header.astro";
+import { AstroError } from "astro/errors";
+
+// Les helpers i18n sont disponibles globalement dans les pages .astro
+import { getRelativeLocaleUrl } from "astro:i18n";
+
+const { title } = Astro.props;
+const lang = Astro.currentLocale;
+
+if (!lang) {
+  // Cette erreur ne devrait jamais se produire avec une config i18n correcte
+  throw new AstroError("Impossible de déterminer la langue actuelle (currentLocale).");
+}
+
+// On récupère les catégories déjà traduites pour la langue en cours
+const menuCategories = await getMenuItems(lang);
+
+// On définit les langues disponibles pour le sélecteur
+const availableLangs = [
+  { code: "fr", name: "Français", flag: "fr" },
+  { code: "en", name: "English", flag: "gb" },
+  { code: "es", name: "Español", flag: "es" },
+];
+---
+<!doctype html>
+<html lang={lang}>
+<head>
+  <meta charset="UTF-8" />
+  <title>{title}</title>
+  <!-- Vos autres balises meta, styles, etc. -->
+</head>
+<body>
+  <Header menuCategories={menuCategories} availableLangs={availableLangs} />
+  <main>
+    <slot />
+  </main>
+</body>
+</html>

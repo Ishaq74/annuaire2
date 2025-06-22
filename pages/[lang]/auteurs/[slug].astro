@@ -1,0 +1,85 @@
+---
+export const prerender = false;
+import Layout from '@layouts/Layout.astro';
+import { Badge } from '@components/starwind/badge';
+import { Avatar } from '@components/starwind/avatar';
+import { Icon } from 'astro-icon/components';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@components/starwind/breadcrumb';
+import { supabase } from '@lib/supabase';
+
+// getStaticPaths va créer une page pour chaque auteur dans chaque langue
+export async function getStaticPaths() {
+    const { data: authors } = await supabase
+        .from('authors')
+        .select(`slug, author_translations!inner(lang_code)`);
+
+    if (!authors) return [];
+
+    return authors.flatMap(author => 
+        author.author_translations.map(translation => ({
+            params: { lang: translation.lang_code, slug: author.slug },
+        }))
+    );
+}
+
+const { lang } = Astro.locals;
+const { author, articles } = Astro.locals.authorPageData ?? {};
+
+if (!author) {
+    return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const authorTranslation = author.author_translations[0];
+---
+<Layout title={`Profil de ${author.name}`} lang={lang}>
+	<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+		<header class="mb-8">
+            <Breadcrumb class="flex items-center gap-2 text-sm text-gray-500 list-none p-0">
+                <BreadcrumbItem><BreadcrumbLink href={`/${lang}/`} class="flex items-center gap-1.5 hover:text-blue-600"><Icon name="openmoji:house" class="h-4 w-4" /> Accueil</BreadcrumbLink></BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem isCurrentPage class="font-semibold text-gray-700">{author.name}</BreadcrumbItem>
+            </Breadcrumb>
+        </header>
+
+        <!-- Section Profil Auteur -->
+        <section class="bg-white rounded-2xl shadow-sm p-8 flex flex-col md:flex-row items-center gap-8 mb-12">
+            <Avatar src={author.profile_image_url} initials={author.name.split(' ').map(n=>n[0]).join('')} alt={author.name} class="h-32 w-32 shrink-0 border-4 border-white shadow-lg" />
+            <div class="text-center md:text-left">
+                <h1 class="text-3xl font-bold text-gray-900">{author.name}</h1>
+                <p class="mt-2 text-gray-600">{authorTranslation?.bio || "Contributeur passionné de la communauté d'Annecy."}</p>
+                {author.social_links && author.social_links.length > 0 && (
+                    <div class="mt-4 flex justify-center md:justify-start gap-4">
+                        {author.social_links.map(link => (
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-blue-600">
+                                <Icon name={`openmoji:${link.platform}`} class="h-6 w-6" />
+                            </a>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </section>
+
+        <!-- Section Articles de l'Auteur -->
+        <section>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Articles de {author.name} ({articles?.length || 0})</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {articles && articles.length > 0 ? articles.map(article => {
+                    const articleUrl = `/${lang}/magazine/${article.category_slug}/${article.article_seo_slug}`;
+                    // On peut réutiliser une carte d'article existante ou en faire une custom
+                    return (
+                        <a href={articleUrl} class="group block bg-white rounded-xl shadow-sm hover:shadow-lg transition-shadow">
+                            <img src={article.article_featured_image_url || 'https://placehold.co/800x500'} alt={article.article_featured_image_alt || 'Image'} class="w-full h-40 object-cover rounded-t-xl" />
+                            <div class="p-4">
+                                <Badge variant="secondary" class="mb-2">{article.category_name}</Badge>
+                                <h3 class="font-bold text-gray-800 group-hover:text-blue-600 line-clamp-2">{article.article_title}</h3>
+                                <p class="text-sm text-gray-500 mt-2">{new Date(article.publication_date).toLocaleDateString(lang)}</p>
+                            </div>
+                        </a>
+                    )
+                }) : (
+                    <p class="md:col-span-2 lg:col-span-3 text-center text-gray-600 py-8">Cet auteur n'a pas encore publié d'articles.</p>
+                )}
+            </div>
+        </section>
+	</main>
+</Layout>

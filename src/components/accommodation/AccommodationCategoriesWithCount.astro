@@ -1,0 +1,84 @@
+---
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Badge } from '@components/starwind/badge';
+import { Icon } from 'astro-icon/components';
+import { supabase } from '@lib/supabase';
+
+export interface Props {
+  parentId: string;
+}
+
+const { lang } = Astro.locals;
+const { parentId } = Astro.props;
+
+const translations = {
+  fr: {
+    title: 'Catégories d\'hébergements',
+    empty: 'Aucune catégorie disponible.'
+  },
+  en: {
+    title: 'Accommodation Categories',
+    empty: 'No category available.'
+  },
+  es: {
+    title: 'Categorías de Alojamiento',
+    empty: 'Ninguna categoría disponible.'
+  }
+};
+const t = translations[lang] ?? translations.fr;
+
+let categories = [];
+
+if (parentId) {
+  const { data, error } = await supabase
+    .from('categories')
+    .select(`
+      id,
+      slug,
+      category_translations!inner(lang_code, name, seo_slug),
+      places(count)
+    `)
+    .eq('parent_id', parentId)
+    .eq('category_translations.lang_code', lang)
+    .order('display_order', { ascending: true });
+
+  if (error) {
+    console.error('Erreur récupération catégories:', error);
+  } else if (data) {
+    categories = data.map(cat => ({
+      id: cat.id,
+      name: cat.category_translations[0].name,
+      seo_slug: cat.category_translations[0].seo_slug || cat.slug,
+      places_count: cat.places?.[0]?.count || 0,
+    }));
+  }
+}
+---
+
+<Card>
+  <CardHeader>
+    <CardTitle class="flex items-center gap-2">
+      <Icon name="openmoji:bed" class="h-5 w-5" />
+      {t.title}
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    {categories.length > 0 ? (
+      <ul class="space-y-2">
+        {categories.map(cat => (
+          <li>
+            <a href={`/${lang}/${cat.seo_slug}`} class="flex justify-between items-center text-gray-600 hover:text-blue-600 font-medium p-2 -m-2 rounded-lg hover:bg-slate-50 transition-colors">
+              <span>{cat.name}</span>
+              <Badge variant="secondary">{cat.places_count}</Badge>
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div class="flex flex-col items-center py-8">
+        <Icon name="openmoji:desert" class="h-16 w-16 mx-auto text-gray-400 mb-4" />
+        <span class="text-gray-500 text-sm">{t.empty}</span>
+      </div>
+    )}
+  </CardContent>
+</Card>

@@ -1,0 +1,256 @@
+---
+export const prerender = false; // Rendu dynamique pour chaque requête
+
+// Importation des composants nécessaires
+import Layout from '@layouts/Layout.astro';
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@components/starwind/avatar';
+import { Button } from '@components/starwind/button';
+import { Input } from '@components/starwind/input';
+import { Icon } from 'astro-icon/components';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@components/starwind/breadcrumb';
+import { supabase } from '@lib/supabase';
+import PageHeader from '@components/blog/PageHeader.astro';
+import ArticleCard from '@components/blog/ArticleCard.astro';
+import ContributeCard from '@components/blog/ContributeCard.astro';
+import NewsletterCard from '@components/blog/NewsletterCard.astro';
+
+// Interface pour les données des articles
+interface ArticleData {
+  id: string;
+  article_title: string;
+  article_summary: string;
+  article_featured_image_url: string | null;
+  article_featured_image_alt: string | null;
+  article_seo_slug: string;
+  publication_date: string;
+  read_time_minutes: number;
+  view_count: number;
+  author_name: string;
+  author_profile_image_url: string | null;
+  author_bio: string | null;
+  category_id: string;
+  category_name: string;
+  category_seo_slug: string;
+  category_icon_name: string | null;
+}
+
+// Récupération des paramètres de l'URL et de la langue
+const { lang } = Astro.locals;
+const params = Astro.params;
+const categorySlug = params.category; // Slug de la catégorie depuis l'URL
+
+// ID fixe de la catégorie racine (magazine)
+const magazineCategoryId = 'd20b7566-105a-47f3-947f-dab773bef43e';
+let magazineSlug = 'magazine';
+let magazineName = 'Magazine';
+
+// Récupération de la catégorie racine pour obtenir magazineSlug et magazineName
+const { data: rootCategory, error: rootError } = await supabase
+  .from('categories')
+  .select(`
+    category_translations!inner(lang_code, name, seo_slug)
+  `)
+  .eq('id', magazineCategoryId)
+  .single();
+
+if (rootError) {
+  console.error('Erreur récupération catégorie racine:', rootError);
+} else if (rootCategory) {
+  const translation = rootCategory.category_translations.find((t) => t.lang_code === lang);
+  if (translation) {
+    magazineName = translation.name;
+    magazineSlug = translation.seo_slug || 'magazine';
+  }
+}
+
+// Récupération de la catégorie spécifique
+let category = null;
+let translation = null;
+
+const { data: categoryData, error: categoryError } = await supabase
+  .from('categories')
+  .select(`
+    id,
+    icon_name,
+    category_translations!inner(lang_code, name, seo_slug, description),
+    parent_id
+  `)
+  .eq('category_translations.seo_slug', categorySlug)
+  .eq('category_translations.lang_code', lang)
+  .single();
+
+if (categoryError || !categoryData || categoryData.parent_id !== magazineCategoryId) {
+  console.error('Catégorie non trouvée ou invalide:', categoryError);
+} else {
+  category = categoryData;
+  translation = category.category_translations[0];
+}
+
+// Récupération des articles de la catégorie
+let articles = [];
+if (category) {
+  const { data: fetchedArticles, error: articlesError } = await supabase
+    .from('articles')
+    .select(`
+      id,
+      publication_date,
+      read_time_minutes,
+      view_count,
+      featured_image_url,
+      article_translations!inner(name, description, featured_image_alt, seo_slug, lang_code),
+      authors!inner(name, profile_image_url, author_translations!inner(bio, lang_code)),
+      categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
+    `)
+    .eq('category_id', category.id)
+    .eq('article_translations.lang_code', lang)
+    .eq('authors.author_translations.lang_code', lang)
+    .order('publication_date', { ascending: false });
+
+  if (articlesError) {
+    console.error('Erreur récupération articles:', articlesError);
+  } else if (fetchedArticles) {
+    articles = fetchedArticles.map((article) => ({
+      id: article.id,
+      article_title: article.article_translations[0].name,
+      article_summary: article.article_translations[0].description,
+      article_featured_image_url: article.featured_image_url,
+      article_featured_image_alt: article.article_translations[0].featured_image_alt,
+      article_seo_slug: article.article_translations[0].seo_slug,
+      publication_date: article.publication_date,
+      read_time_minutes: article.read_time_minutes,
+      view_count: article.view_count || 0,
+      author_name: article.authors.name || 'Inconnu',
+      author_profile_image_url: article.authors.profile_image_url,
+      author_bio: article.authors.author_translations[0]?.bio,
+      category_id: article.categories.id,
+      category_name: article.categories.category_translations.find((t) => t.lang_code === lang)?.name || '',
+      category_seo_slug: article.categories.category_translations.find((t) => t.lang_code === lang)?.seo_slug || article.categories.slug,
+      category_icon_name: article.categories.icon_name,
+    }));
+  }
+}
+
+// Récupération des articles populaires dans la catégorie
+let popularInCategory = [];
+if (category) {
+  const { data: fetchedPopularArticles, error: popularError } = await supabase
+    .from('articles')
+    .select(`
+      id,
+      view_count,
+      featured_image_url,
+      article_translations!inner(name, seo_slug, lang_code),
+      categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
+    `)
+    .eq('category_id', category.id)
+    .eq('article_translations.lang_code', lang)
+    .order('view_count', { ascending: false })
+    .limit(5);
+
+  if (popularError) {
+    console.error('Erreur récupération articles populaires:', popularError);
+  } else if (fetchedPopularArticles) {
+    popularInCategory = fetchedPopularArticles.map((article) => ({
+      id: article.id,
+      article_title: article.article_translations[0].name,
+      article_summary: '',
+      article_featured_image_url: article.featured_image_url,
+      article_featured_image_alt: null,
+      article_seo_slug: article.article_translations[0].seo_slug,
+      publication_date: '',
+      read_time_minutes: 0,
+      view_count: article.view_count || 0,
+      author_name: '',
+      author_profile_image_url: null,
+      author_bio: null,
+      category_id: article.categories.id,
+      category_name: article.categories.category_translations.find((t) => t.lang_code === lang)?.name || '',
+      category_seo_slug: article.categories.category_translations.find((t) => t.lang_code === lang)?.seo_slug || article.categories.slug,
+      category_icon_name: article.categories.icon_name,
+    }));
+  }
+}
+---
+
+<!-- Vérification si la catégorie existe avant d'afficher le contenu -->
+{category ? (
+  <Layout title={`${translation.name} | Magazine Annecy`} lang={lang}>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <PageHeader
+        title={translation.name}
+        description={translation.description || (lang === 'fr' ? 'Découvrez tous nos articles sur ce sujet.' : 'Discover all our articles on this topic.')}
+        lang={lang}
+        magazineSlug={magazineSlug}
+        breadcrumbItems={[
+          { label: lang === 'fr' ? 'Accueil' : lang === 'en' ? 'Home' : 'Inicio', url: `/${lang}/`, icon: 'openmoji:house' },
+          { label: magazineName, url: `/${lang}/${magazineSlug}`, icon: 'openmoji:newspaper' },
+          { label: translation.name, icon: category.icon_name || 'openmoji:bookmark', isCurrent: true },
+        ]}
+        hasBottomBorder={true}
+        className="mt-6"
+      />
+      <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+        <!-- Liste des articles -->
+        <div class="lg:col-span-2">
+          {articles.length > 0 ? (
+            <div class="space-y-6">
+              {articles.map(article => (
+                <ArticleCard
+                  article={article}
+                  lang={lang}
+                  magazineSlug={magazineSlug}
+                  variantData="recent"
+                  variantStyle="horizontal"
+                />
+              ))}
+            </div>
+          ) : (
+            <div class="text-center py-16 bg-white rounded-2xl">
+              <Icon name="openmoji:desert" class="h-16 w-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-xl font-bold text-gray-800">Aucun article ici pour l'instant</h3>
+              <p class="text-gray-600 mt-2">Revenez bientôt ou explorez d'autres catégories !</p>
+            </div>
+          )}
+        </div>
+        <!-- Barre latérale -->
+        <div class="mt-12 lg:mt-0">
+          <aside class="space-y-8 sticky top-8">
+            <!-- Articles populaires -->
+            <Card>
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2">
+                  <Icon name="openmoji:rocket" class="h-5 w-5" />
+                  Populaires dans "{translation.name}"
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul class="space-y-4">
+                  {popularInCategory.map(article => (
+                    <li>
+                      <ArticleCard
+                        article={article}
+                        lang={lang}
+                        magazineSlug={magazineSlug}
+                        variantData="popular"
+                        variantStyle="compact"
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+        <NewsletterCard />
+
+        <ContributeCard />
+          </aside>
+        </div>
+      </div>
+    </main>
+  </Layout>
+) : (
+  <div class="text-center py-16">
+    <h1 class="text-2xl font-bold text-gray-800">Catégorie non trouvée</h1>
+    <p class="text-gray-600 mt-2">Vérifiez l’URL ou explorez d’autres catégories.</p>
+  </div>
+)}

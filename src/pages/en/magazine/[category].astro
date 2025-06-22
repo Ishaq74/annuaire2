@@ -1,0 +1,68 @@
+---
+export const prerender = false;
+
+import BaseLayout from '@layouts/Layout.astro';
+import { getCategoryPageData } from '@lib/magazine';
+import type { CategoryPageData } from '@lib/magazine';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { useTranslations } from '@i18n/utils';
+import PageHeader from '@components/blog/PageHeader.astro';
+import ArticleCard from '@components/blog/ArticleCard.astro';
+import NewsletterCard from '@components/blog/NewsletterCard.astro';
+import ContributeCard from '@components/blog/ContributeCard.astro';
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Icon } from 'astro-icon/components';
+
+const lang = Astro.currentLocale;
+const t = useTranslations(lang);
+const { category: categorySlug } = Astro.params;
+if (!categorySlug) throw new AstroError('Bad Request', 'Slug de catégorie manquant.');
+
+const data: CategoryPageData = await getCategoryPageData(lang, categorySlug);
+const parentCategorySlug = data.parentCategory.seoSlug;
+---
+<BaseLayout title={`${data.category.name} | ${data.parentCategory.name}`} description={data.category.description}>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <PageHeader
+      title={data.category.name}
+      description={data.category.description || t('magazine.category.defaultDescription', data.category.name)}
+      icon={data.category.iconName}
+      breadcrumbItems={[
+        { label: t('home.breadcrumb'), url: getRelativeLocaleUrl(lang, '/') },
+        { label: data.parentCategory.name, url: getRelativeLocaleUrl(lang, parentCategorySlug) },
+        { label: data.category.name, url: getRelativeLocaleUrl(lang, `${parentCategorySlug}/${categorySlug}`), isCurrent: true },
+      ]}
+    />
+    <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+      <div class="lg:col-span-2">
+        {data.articles.length > 0 ? (
+          <div class="space-y-8">
+            {data.articles.map(article => <ArticleCard {article} parentCategorySlug={parentCategorySlug} variant="horizontal" />)}
+          </div>
+        ) : (
+          <div class="text-center py-16 bg-white rounded-2xl border border-gray-100">
+            <Icon name="openmoji:desert" class="h-16 w-16 mx-auto text-gray-400 mb-4" />
+            <h3 class="text-xl font-bold text-gray-800">{t('magazine.category.noArticles')}</h3>
+            <p class="text-gray-600 mt-2">{t('magazine.category.comeback')}</p>
+          </div>
+        )}
+      </div>
+      <aside class="space-y-8 sticky top-8 mt-12 lg:mt-0">
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2"><Icon name="openmoji:rocket" class="h-5 w-5" />{t('magazine.category.popularTitle')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.popularArticles.length > 0 ? (
+              <ul class="space-y-4">
+                {data.popularArticles.map(article => <li><ArticleCard {article} parentCategorySlug={parentCategorySlug} variant="compact" /></li>)}
+              </ul>
+            ) : <p class="text-sm text-gray-500">{t('magazine.index.noPopular')}</p>}
+          </CardContent>
+        </Card>
+        <NewsletterCard />
+        <ContributeCard />
+      </aside>
+    </div>
+  </main>
+</BaseLayout>

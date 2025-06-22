@@ -1,0 +1,159 @@
+---
+export const prerender = false;
+
+import BaseLayout from '@layouts/Layout.astro';
+import { getArticlePageData } from '@lib/magazine';
+import type { ArticlePageData } from '@lib/magazine';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { useTranslations } from '@i18n/utils';
+import PageHeader from '@components/blog/PageHeader.astro';
+import ArticleCard from '@components/blog/ArticleCard.astro';
+import NewsletterCard from '@components/blog/NewsletterCard.astro';
+import ContributeCard from '@components/blog/ContributeCard.astro';
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Avatar, AvatarImage, AvatarFallback } from '@components/starwind/avatar';
+import { Button } from '@components/starwind/button';
+import { Icon } from 'astro-icon/components';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@components/starwind/tabs';
+import { Textarea } from '@components/starwind/textarea';
+import { Input } from '@components/starwind/input';
+import Comment from '@components/blog/Comment.astro';
+
+const lang = Astro.currentLocale;
+const t = useTranslations(lang);
+
+const { category: categorySlug, slug: articleSlug } = Astro.params;
+if (!categorySlug || !articleSlug) throw new AstroError('Bad Request', 'Paramètres manquants.');
+
+const data: ArticlePageData = await getArticlePageData(lang, categorySlug, articleSlug);
+const { article, parentCategory, relatedArticles, comments, totalCommentsCount } = data;
+---
+
+<BaseLayout title={article.title} description={article.summary}>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+      <div class="lg:col-span-2">
+        <article>
+          <header class="mb-8">
+            <PageHeader
+              title={article.title}
+              description={article.summary}
+              showTitle={false}
+              showDescription={false}
+              hasBottomBorder={false}
+              breadcrumbItems={[
+                { label: t('home.breadcrumb'), url: getRelativeLocaleUrl(lang, '/') },
+                { label: parentCategory.name, url: getRelativeLocaleUrl(lang, parentCategory.seoSlug) },
+                { label: article.category.name, url: getRelativeLocaleUrl(lang, `${parentCategory.seoSlug}/${article.category.seoSlug}`) },
+                { label: article.title, url: getRelativeLocaleUrl(lang, `${parentCategory.seoSlug}/${article.category.seoSlug}/${article.seoSlug}`), isCurrent: true },
+              ]}
+            />
+            <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight lg:text-5xl mt-4">{article.title}</h1>
+            <p class="mt-4 text-xl text-gray-600">{article.summary}</p>
+            <div class="mt-6 flex items-center gap-8 text-sm text-gray-500 border-t border-b py-4">
+              <a href={getRelativeLocaleUrl(lang, `auteurs/${article.author.slug}`)} class="flex items-center gap-3 group">
+                <Avatar class="h-10 w-10"><AvatarImage src={article.author.profileImageUrl} alt={article.author.name} /><AvatarFallback>{article.author.name.split(' ').map(n => n[0]).join('')}</AvatarFallback></Avatar>
+                <div><p class="font-semibold text-gray-800 group-hover:text-blue-600">{article.author.name}</p><p class="text-blue-600 group-hover:underline">{t('article.author.viewProfile')}</p></div>
+              </a>
+              <div class="space-y-1">
+                <p><span class="font-semibold">{t('article.publishedOn')}</span> {new Date(article.publicationDate).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                <p><span class="font-semibold">{t('article.readTime')}</span> {article.readTimeMinutes} min</p>
+              </div>
+            </div>
+          </header>
+
+          {article.featuredImageUrl && <img src={article.featuredImageUrl} alt={article.featuredImageAlt || article.title} class="rounded-lg shadow-lg mb-8 w-full h-auto" />}
+          
+          <div class="prose prose-lg max-w-none prose-img:rounded-xl prose-a:text-blue-600 hover:prose-a:text-blue-800" set:html={article.content} />
+        </article>
+
+        <section id="comments" class="mt-16 border-t pt-8">
+            <h2 class="text-3xl font-bold mb-6">{t('comments.title')} ({t('comments.count', totalCommentsCount)})</h2>
+            <Tabs defaultValue="view" class="w-full">
+                <TabsList class="grid w-full grid-cols-2">
+                    <TabsTrigger value="view">{t('comments.view')}</TabsTrigger>
+                    <TabsTrigger value="write">{t('comments.write')}</TabsTrigger>
+                </TabsList>
+                <TabsContent value="view" class="mt-6">
+                    {comments.length > 0 ? (
+                        <div class="space-y-6">
+                            {comments.map(comment => <Comment {comment} />)}
+                        </div>
+                    ) : <p class="text-center text-gray-500 py-8">{t('comments.none')}</p>}
+                </TabsContent>
+                <TabsContent value="write" class="mt-6">
+                    <Card>
+                        <CardHeader><CardTitle>{t('comments.formTitle')}</CardTitle></CardHeader>
+                        <CardContent>
+                            <form client:load id="comment-form" class="space-y-4">
+                                <input type="hidden" name="article_id" value={article.id} />
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Input name="author_name" placeholder={t('comments.name')} required />
+                                    <Input name="author_email" type="email" placeholder={t('comments.email')} required />
+                                </div>
+                                <Textarea name="content" placeholder={t('comments.message')} required rows={5}></Textarea>
+                                <div class="flex items-center gap-4">
+                                    <Button type="submit">{t('comments.submit')}</Button>
+                                    <p class="status-message text-sm" role="status" aria-live="polite"></p>
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+        </section>
+      </div>
+
+      <aside class="space-y-8 sticky top-8 mt-12 lg:mt-0">
+        <Card>
+          <CardHeader class="text-center">
+            <a href={getRelativeLocaleUrl(lang, `auteurs/${article.author.slug}`)} class="inline-block"><Avatar class="h-20 w-20 mx-auto border-4 border-white shadow-md"><AvatarImage src={article.author.profileImageUrl} alt={article.author.name} /><AvatarFallback>{article.author.name.split(' ').map(n => n[0]).join('')}</AvatarFallback></Avatar></a>
+            <CardTitle class="mt-4">{article.author.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p class="text-sm text-gray-600 text-center italic line-clamp-4">{article.author.bio}</p>
+            <Button is="a" href={getRelativeLocaleUrl(lang, `auteurs/${article.author.slug}`)} variant="outline" size="sm" class="w-full mt-4">{t('article.author.allPosts')}</Button>
+          </CardContent>
+        </Card>
+        {relatedArticles.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle class="flex items-center gap-2"><Icon name="openmoji:link" class="h-5 w-5" />{t('article.readAlso')}</CardTitle></CardHeader>
+            <CardContent>
+              <ul class="space-y-4">
+                {relatedArticles.map(related => <li><ArticleCard article={related} parentCategorySlug={parentCategory.seoSlug} variant="compact" /></li>)}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+        <NewsletterCard />
+        <ContributeCard />
+      </aside>
+    </div>
+  </main>
+
+  <script define:vars={{ t_success: t('comments.success'), t_error: t('comments.error') }}>
+    const form = document.getElementById('comment-form');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusMessage = form.querySelector('.status-message');
+        const button = form.querySelector('button[type="submit"]');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        statusMessage.textContent = '';
+        button.disabled = true;
+        try {
+          const res = await fetch('/api/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+          if (res.ok) {
+            statusMessage.textContent = window.t_success;
+            statusMessage.style.color = 'green';
+            form.reset();
+          } else { throw new Error('API error'); }
+        } catch (error) {
+          statusMessage.textContent = window.t_error;
+          statusMessage.style.color = 'red';
+        } finally { button.disabled = false; }
+      });
+    }
+  </script>
+</BaseLayout>

@@ -1,0 +1,25 @@
+{
+  "name": "annuaire",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@iconify-json/circle-flags": "^1.2.6",
+    "@iconify-json/openmoji": "^1.2.9",
+    "@supabase/supabase-js": "^2.50.0",
+    "@tabler/icons": "^3.34.0",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/vite": "^4.1.10",
+    "astro": "^5.9.3",
+    "astro-font": "^1.1.0",
+    "astro-icon": "^1.1.5",
+    "tailwind-variants": "^1.0.0",
+    "tailwindcss": "^4.1.10",
+    "tw-animate-css": "^1.3.4"
+  }
+}

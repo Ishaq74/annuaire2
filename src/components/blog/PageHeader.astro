@@ -1,0 +1,76 @@
+---
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@components/starwind/breadcrumb';
+import { Icon } from 'astro-icon/components';
+
+// L'interface de props est simplifiée, comme nous l'avions convenu.
+interface Props {
+  title: string;
+  description?: string;
+  breadcrumbItems: {
+    label: string;
+    url: string; // Chaque item DOIT avoir une URL pour être cliquable.
+    icon?: string;
+    isCurrent?: boolean;
+  }[];
+  icon?: string;
+  showTitle?: boolean;
+  showBreadcrumb?: boolean;
+  showDescription?: boolean;
+  hasBottomBorder?: boolean;
+  className?: string;
+}
+
+const {
+  title,
+  description,
+  breadcrumbItems,
+  icon,
+  showTitle = true,
+  showBreadcrumb = true,
+  showDescription = true,
+  hasBottomBorder = true,
+  className = '',
+} = Astro.props;
+---
+
+<!-- TA STRUCTURE HTML ET CSS EST CONSERVÉE À 100% -->
+<header class={`mb-8 ${hasBottomBorder ? 'border-b border-gray-200 pb-8' : ''} ${className}`}>
+  {showBreadcrumb && (
+    <Breadcrumb class="flex items-center gap-2 text-sm text-gray-500 list-none p-0">
+      {breadcrumbItems.map((item, index) => (
+        <>
+          <BreadcrumbItem isCurrentPage={item.isCurrent}>
+            {/* CORRECTION CLÉ : On crée TOUJOURS un lien. La distinction visuelle se fait via les classes. */}
+            <BreadcrumbLink
+              href={item.url}
+              class:list={[
+                "flex items-center gap-1.5 transition-colors",
+                item.isCurrent ? "font-semibold text-gray-700 cursor-default" : "hover:text-blue-600"
+              ]}
+              aria-current={item.isCurrent ? "page" : undefined}
+            >
+              {item.icon && <Icon name={item.icon} class="h-4 w-4" />}
+              <span>{item.label}</span>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          {index < breadcrumbItems.length - 1 && <BreadcrumbSeparator />}
+        </>
+      ))}
+    </Breadcrumb>
+  )}
+  <div class={`text-center ${showBreadcrumb ? 'mt-4' : ''}`}>
+    {icon && (
+      <div class="inline-block p-3 bg-blue-100 rounded-2xl mb-4">
+        <Icon name={icon} class="h-8 w-8 text-blue-600" />
+      </div>
+    )}
+    {showTitle && (
+      <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight lg:text-5xl">{title}</h1>
+    )}
+    {showDescription && description && (
+      <p class="mt-4 max-w-2xl mx-auto text-lg text-gray-600">
+        {description}
+      </p>
+    )}
+  </div>
+</header>

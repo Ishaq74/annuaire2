@@ -1,0 +1,30 @@
+---
+import type { Comment as CommentType } from '@lib/magazine';
+import { Avatar, AvatarFallback } from '@components/starwind/avatar';
+import { useTranslations } from '@i18n/utils';
+
+interface Props {
+  comment: CommentType;
+}
+
+const { comment } = Astro.props;
+const lang = Astro.currentLocale;
+const t = useTranslations(lang);
+---
+<div class="flex gap-4">
+  <Avatar class="h-10 w-10 mt-1 shrink-0">
+    <AvatarFallback>{comment.author_name.split(' ').map(n => n[0]).join('') || '?'}</AvatarFallback>
+  </Avatar>
+  <div class="bg-gray-50 p-4 rounded-lg flex-grow border border-gray-200">
+    <p class="font-semibold text-gray-800">{comment.author_name}</p>
+    <p class="text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+    <p class="text-xs text-gray-500 mt-2">{new Date(comment.created_at).toLocaleString(lang, { dateStyle: 'long', timeStyle: 'short' })}</p>
+    
+    <!-- Affichage récursif des réponses (enfants) -->
+    {comment.children.length > 0 && (
+      <div class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4">
+        {comment.children.map(child => <Astro.self comment={child} />)}
+      </div>
+    )}
+  </div>
+</div>

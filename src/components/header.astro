@@ -1,0 +1,316 @@
+---
+import { Button } from "@components/starwind/button";
+import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownContent,
+  DropdownItem,
+  DropdownLabel,
+  DropdownSeparator,
+} from "@components/starwind/dropdown";
+import { Dialog, DialogTrigger, DialogContent, DialogClose } from "@components/starwind/dialog";
+import { Avatar } from "@components/starwind/avatar";
+import { Icon } from "astro-icon/components";
+import { getRelativeLocaleUrl } from "astro:i18n";
+
+// --- PROPS ---
+// On attend les catégories déjà filtrées par langue et les langues disponibles.
+const { menuCategories = [], availableLangs = [] } = Astro.props;
+
+// --- LOGIQUE i18n ---
+const lang = Astro.currentLocale;
+const currentLangData = availableLangs.find(l => l.code === lang);
+const homeUrl = getRelativeLocaleUrl(lang); // URL de la page d'accueil de la langue actuelle
+
+// --- LOGIQUE DE CONSTRUCTION DU MENU ---
+// Cette logique est maintenant plus simple et robuste car elle travaille sur des données pré-traduites.
+const menuItems = menuCategories
+  .filter(cat => cat.parent_id === null) // On ne prend que les parents de premier niveau
+  .map(parentCat => {
+    // Les sous-catégories directes de ce parent
+    const directSubs = menuCategories.filter(cat => cat.parent_id === parentCat.id);
+
+    // Un menu est "méga" si une de ses sous-catégories a elle-même des enfants.
+    const isMegaMenu = directSubs.some(sub => menuCategories.some(n => n.parent_id === sub.id));
+
+    // On utilise l'helper d'Astro pour générer l'URL parente. C'est la bonne pratique.
+    const parentHref = getRelativeLocaleUrl(lang, parentCat.translation.seo_slug || parentCat.slug);
+
+    let dropdownContent = [];
+    let dropdownType = "simple";
+
+    if (isMegaMenu) {
+      dropdownType = "mega";
+      directSubs.forEach(groupCat => {
+        const finalItems = menuCategories
+          .filter(finalCat => finalCat.parent_id === groupCat.id)
+          .map(finalCat => ({
+            text: finalCat.translation.name,
+            href: getRelativeLocaleUrl(lang, `${parentCat.translation.seo_slug}/${groupCat.translation.seo_slug}/${finalCat.translation.seo_slug}`),
+            iconName: finalCat.icon_name,
+          }));
+
+        if (finalItems.length > 0) {
+          dropdownContent.push({ label: groupCat.translation.name, items: finalItems });
+        } else {
+            // Cas où un "groupe" est en fait un lien direct dans un mega-menu
+            dropdownContent.push({
+                items: [{
+                    text: groupCat.translation.name,
+                    href: getRelativeLocaleUrl(lang, `${parentCat.translation.seo_slug}/${groupCat.translation.seo_slug}`),
+                    description: groupCat.translation.description,
+                    iconName: groupCat.icon_name,
+                }]
+            });
+        }
+      });
+    } else if (directSubs.length > 0) { // C'est un dropdown simple
+      const simpleItems = directSubs.map(subCat => ({
+        text: subCat.translation.name,
+        href: getRelativeLocaleUrl(lang, `${parentCat.translation.seo_slug}/${subCat.translation.seo_slug}`),
+        iconName: subCat.icon_name,
+      }));
+      dropdownContent.push({ items: simpleItems });
+    }
+
+    return {
+      text: parentCat.translation.name,
+      iconName: parentCat.icon_name,
+      dropdown: dropdownContent.length > 0 ? { type: dropdownType, content: dropdownContent } : undefined,
+      active: Astro.url.pathname.startsWith(parentHref),
+      href: parentHref,
+    };
+  })
+  .filter(Boolean); // On retire les éventuels items nuls si une catégorie n'avait pas de traduction
+
+
+// --- LOGIQUE UTILISATEUR (Exemple) ---
+const isUserLoggedIn = true;
+const userName = "Jane Doe";
+const userEmail = "jane.doe@example.com";
+const userAvatarSrc = "https://i.pravatar.cc/150?img=3";
+---
+
+<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between text-gray-700">
+  <!-- LOGO ET NOM DU SITE -->
+  <div class="flex items-center space-x-2">
+    <a href={homeUrl} class="text-blue-600 text-lg font-bold">Annecy</a>
+    <span class="text-gray-800 text-lg font-bold">Communautaire</span>
+  </div>
+
+  <!-- NAVIGATION PRINCIPALE (DESKTOP) -->
+  <nav class="hidden md:flex items-center space-x-6">
+    {menuItems.map(item => (
+      <>
+        {item.dropdown ? (
+          <Dropdown openOnHover>
+            <DropdownTrigger asChild>
+              <button
+                class:list={[
+                  "font-medium flex items-center px-2 py-1 rounded group relative",
+                  item.active ? "text-blue-600 border-b-2 border-blue-600" : "hover:text-blue-600 hover:border-b-2 hover:border-transparent",
+                ]}
+              >
+                <!-- Le lien est sur le bouton entier pour une meilleure accessibilité -->
+                <a href={item.href} class="flex items-center" tabindex="-1">
+                  {item.iconName && <Icon name={item.iconName} class="h-4 w-4 mr-1 text-gray-500 group-hover:text-blue-600" />}
+                  <span>{item.text}</span>
+                </a>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1 text-gray-500 group-hover:text-blue-600 transition-transform duration-200 group-data-[state=open]:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </DropdownTrigger>
+
+            {item.dropdown.type === "mega" ? (
+              <DropdownContent side="bottom" align="start" class="p-6 bg-white rounded-lg shadow-xl border border-gray-100 mt-2 min-w-[500px] lg:min-w-[700px]">
+                <div class:list={["grid gap-x-12 gap-y-4", item.text === "Activités" ? "grid-cols-3" : "grid-cols-2"]}>
+                  {item.dropdown.content.map(section => (
+                    <div>
+                      {section.label && <DropdownLabel class="text-gray-700 font-semibold mb-2">{section.label}</DropdownLabel>}
+                      <ul class="space-y-1">
+                        {section.items.map(link => (
+                          <li>
+                            <a href={link.href} class="group flex items-center text-gray-600 hover:text-blue-600 transition-colors">
+                              {link.iconName && <Icon name={link.iconName} class="h-4 w-4 mr-2 text-gray-500 group-hover:text-blue-600" />}
+                              {link.text}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </DropdownContent>
+            ) : (
+              <DropdownContent side="bottom" align="start" class="w-56 p-2 rounded-lg shadow-lg bg-white mt-2">
+                {item.dropdown.content[0]?.items.map(link => (
+                  <DropdownItem as="a" href={link.href} class="flex items-center w-full text-left px-3 py-2 text-gray-800 hover:bg-gray-50 hover:text-blue-600 rounded-md">
+                    {link.iconName && <Icon name={link.iconName} class="h-4 w-4 mr-2 text-gray-500 group-hover:text-blue-600" />}
+                    {link.text}
+                  </DropdownItem>
+                ))}
+              </DropdownContent>
+            )}
+          </Dropdown>
+        ) : (
+          <a href={item.href} class:list={["font-medium flex items-center px-2 py-1 rounded group relative", item.active ? "text-blue-600 border-b-2 border-blue-600" : "hover:text-blue-600 hover:border-b-2 hover:border-transparent"]}>
+            {item.iconName && <Icon name={item.iconName} class="h-4 w-4 mr-1 text-gray-500 group-hover:text-blue-600" />}
+            <span>{item.text}</span>
+          </a>
+        )}
+      </>
+    ))}
+  </nav>
+
+  <!-- CONTROLES UTILISATEUR (DESKTOP) -->
+  <div class="hidden md:flex items-center space-x-4">
+    <!-- Sélecteur de langue -->
+    <Dropdown>
+      <DropdownTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Changer de langue">
+          {currentLangData && <Icon name={`circle-flags:${currentLangData.flag}`} class="h-6 w-6" />}
+        </Button>
+      </DropdownTrigger>
+      <DropdownContent side="bottom" align="end" class="w-40 p-2">
+        <DropdownLabel>Choisir une langue</DropdownLabel>
+        <DropdownSeparator />
+        {availableLangs.map(target => (
+          <DropdownItem as="a" href={getRelativeLocaleUrl(target.code)} class="flex items-center justify-between" key={target.code}>
+            <span>{target.name}</span>
+            <Icon name={`circle-flags:${target.flag}`} class="h-5 w-5" />
+          </DropdownItem>
+        ))}
+      </DropdownContent>
+    </Dropdown>
+
+    <!-- Menu Utilisateur ou Boutons Connexion/Inscription -->
+    {isUserLoggedIn ? (
+      <Dropdown>
+        <DropdownTrigger asChild>
+          <button class="relative flex items-center space-x-2 rounded-full p-1 -m-1 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors" aria-label="Menu utilisateur">
+            <Avatar initials={userName.split(' ').map(n => n[0]).join('')} src={userAvatarSrc} alt={userName} class="h-8 w-8" />
+            <span class="text-gray-700 font-medium hidden lg:inline">{userName}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </DropdownTrigger>
+        <DropdownContent side="bottom" align="end" class="w-64 p-2">
+          <div class="px-3 py-2">
+            <p class="font-semibold text-gray-800 truncate">{userName}</p>
+            <p class="text-sm text-gray-500 truncate">{userEmail}</p>
+          </div>
+          <DropdownSeparator class="my-2" />
+          <DropdownItem as="a" href={getRelativeLocaleUrl(lang, 'profile')} class="flex items-center w-full text-left px-3 py-2 text-gray-800 hover:bg-gray-50 hover:text-blue-600 rounded-md">
+            <Icon name="openmoji:person" class="h-4 w-4 mr-2 text-gray-500" />
+            Mon Profil
+          </DropdownItem>
+          <DropdownItem as="a" href={getRelativeLocaleUrl(lang, 'settings')} class="flex items-center w-full text-left px-3 py-2 text-gray-800 hover:bg-gray-50 hover:text-blue-600 rounded-md">
+            <Icon name="openmoji:gear" class="h-4 w-4 mr-2 text-gray-500" />
+            Paramètres
+          </DropdownItem>
+          <DropdownSeparator class="my-2" />
+          <DropdownItem as="button" class="flex items-center w-full text-left px-3 py-2 text-gray-800 hover:bg-gray-50 hover:text-red-500 rounded-md">
+            <Icon name="openmoji:door" class="h-4 w-4 mr-2 text-gray-500" />
+            Déconnexion
+          </DropdownItem>
+        </DropdownContent>
+      </Dropdown>
+    ) : (
+      <>
+        <Button variant="outline" size="sm" as="a" href={getRelativeLocaleUrl(lang, 'login')}>
+          Connexion
+        </Button>
+        <Button size="sm" as="a" href={getRelativeLocaleUrl(lang, 'register')}>
+          Inscription
+        </Button>
+      </>
+    )}
+  </div>
+
+  <!-- MENU MOBILE (DIALOG) -->
+  <Dialog>
+    <DialogTrigger asChild>
+      <button aria-label="Ouvrir le menu mobile" class="md:hidden p-2 rounded hover:bg-gray-100">
+        <svg class="h-6 w-6 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    </DialogTrigger>
+    <DialogContent class="fixed inset-0 bg-white p-6 overflow-auto z-50">
+      <div class="flex justify-between items-center mb-6">
+        <div class="flex items-center space-x-2">
+          <a href={homeUrl} class="text-blue-600 text-lg font-bold">Annecy</a>
+          <span class="text-gray-800 text-lg font-bold">Communautaire</span>
+        </div>
+        <DialogClose asChild>
+          <button class="p-2 rounded hover:bg-gray-100" aria-label="Fermer le menu mobile">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </DialogClose>
+      </div>
+
+      <div class="mb-6 border-b border-gray-100 pb-4">
+        {isUserLoggedIn ? (
+          <div class="flex items-center space-x-3">
+            <Avatar initials={userName.split(' ').map(n => n[0]).join('')} src={userAvatarSrc} alt={userName} class="h-10 w-10" />
+            <div>
+              <p class="font-semibold text-gray-800">{userName}</p>
+              <p class="text-sm text-gray-500">{userEmail}</p>
+            </div>
+          </div>
+        ) : (
+          <div class="flex flex-col space-y-3">
+            <Button variant="outline" as="a" href={getRelativeLocaleUrl(lang, 'login')}>Connexion</Button>
+            <Button as="a" href={getRelativeLocaleUrl(lang, 'register')}>Inscription</Button>
+          </div>
+        )}
+      </div>
+
+      <nav class="space-y-4">
+        {menuItems.map(item => (
+          <details class="group border-b border-gray-100 pb-2" key={item.href}>
+            <summary class="flex items-center justify-between w-full font-medium text-gray-800 hover:text-blue-600 py-2 cursor-pointer list-none">
+              <a href={item.href} class="flex items-center space-x-2 flex-grow">
+                {item.iconName && <Icon name={item.iconName} class="h-5 w-5 text-gray-500" />}
+                <span class="text-lg">{item.text}</span>
+              </a>
+              {item.dropdown && (
+                <Icon name="openmoji:downwards-button" class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform duration-200 flex-shrink-0" />
+              )}
+            </summary>
+            {item.dropdown && (
+              <div class="pl-8 mt-2 space-y-2">
+                {item.dropdown.type === 'mega' ? (
+                  item.dropdown.content.map(section => (
+                    <div key={section.label || Math.random()}>
+                      {section.label && <p class="font-semibold text-gray-700 mb-1">{section.label}</p>}
+                      <ul class="space-y-1 text-gray-600">
+                        {section.items.map(link => (
+                          <li key={link.href}>
+                            <a href={link.href} class="hover:text-blue-600 block py-1">{link.text}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                ) : (
+                  <ul class="space-y-1 text-gray-600">
+                    {item.dropdown.content[0]?.items.map(link => (
+                      <li key={link.href}>
+                        <a href={link.href} class="hover:text-blue-600 block py-1">{link.text}</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </details>
+        ))}
+      </nav>
+    </DialogContent>
+  </Dialog>
+</header>

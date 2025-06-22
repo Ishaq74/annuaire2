@@ -1,0 +1,99 @@
+---
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Button } from '@components/starwind/button';
+import { Input } from '@components/starwind/input';
+import { Icon } from 'astro-icon/components';
+
+// La logique des traductions reste côté serveur, c'est parfait.
+const lang = Astro.currentLocale;
+
+const texts = {
+  fr: { title: 'Newsletter', description: 'Recevez nos derniers articles dans votre boîte mail.', buttonLabel: "S'abonner", disclaimer: "Pas de spam, c'est promis.", success: "Merci pour votre inscription !", error: "Une erreur est survenue.", placeholder: "Votre email" },
+  en: { title: 'Newsletter', description: 'Get our latest articles in your inbox.', buttonLabel: 'Subscribe', disclaimer: "No spam, we promise.", success: "Thank you for subscribing!", error: "An error occurred.", placeholder: "Your email" },
+  es: { title: 'Boletín', description: 'Recibe nuestros últimos artículos en tu correo.', buttonLabel: 'Suscribirse', disclaimer: "Sin spam, lo prometemos.", success: "¡Gracias por suscribirte!", error: "Ocurrió un error.", placeholder: "Tu correo electrónico" }
+};
+
+const t = texts[lang] ?? texts.fr;
+
+// On passe les traductions nécessaires au script client via des attributs `data-*`.
+// C'est la méthode la plus propre pour communiquer du serveur vers le client dans Astro.
+const dataForClient = {
+  "data-success-message": t.success,
+  "data-error-message": t.error,
+  "data-loading-text": "..."
+};
+---
+
+<Card client:load id="newsletter-card">
+  <CardHeader>
+    <CardTitle class="flex items-center gap-2">
+      <Icon name="openmoji:love-letter" class="h-5 w-5" /> {t.title}
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <p class="text-gray-600 mb-4 text-sm">{t.description}</p>
+    <!-- Le formulaire n'a plus besoin de `on:submit` ici. Le script s'en chargera. -->
+    <form class="space-y-3">
+      <Input
+        type="email"
+        name="email"
+        placeholder={t.placeholder}
+        aria-label={t.placeholder}
+        required
+      />
+      <Button class="w-full" type="submit">
+        <!-- Le texte du bouton est géré par le script -->
+        {t.buttonLabel}
+      </Button>
+    </form>
+    <!-- Le conteneur pour les messages de statut -->
+    <p class="status-message text-xs mt-2 text-center" role="status" aria-live="polite"></p>
+    <p class="text-xs text-gray-400 mt-2 text-center">{t.disclaimer}</p>
+  </CardContent>
+</Card>
+
+<script define:vars={{ ...dataForClient, initialButtonText: t.buttonLabel }}>
+  // Ce script est exécuté sur le client.
+  document.addEventListener('DOMContentLoaded', () => {
+    const newsletterCard = document.getElementById('newsletter-card');
+    if (!newsletterCard) return;
+
+    const form = newsletterCard.querySelector('form');
+    const input = newsletterCard.querySelector('input[type="email"]');
+    const button = newsletterCard.querySelector('button');
+    const statusMessage = newsletterCard.querySelector('.status-message');
+    
+    // Les textes sont passés via define:vars
+    const { successMessage, errorMessage, loadingText, initialButtonText } = window;
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      statusMessage.textContent = '';
+      statusMessage.className = 'status-message text-xs mt-2 text-center'; // Reset classes
+      button.disabled = true;
+      button.textContent = loadingText;
+
+      try {
+        const res = await fetch('/api/newsletter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: input.value })
+        });
+
+        if (res.ok) {
+          statusMessage.textContent = successMessage;
+          statusMessage.classList.add('text-green-600');
+          form.reset();
+        } else {
+          throw new Error('Subscription failed');
+        }
+      } catch (error) {
+        statusMessage.textContent = errorMessage;
+        statusMessage.classList.add('text-red-600');
+      } finally {
+        button.disabled = false;
+        button.textContent = initialButtonText;
+      }
+    });
+  });
+</script>

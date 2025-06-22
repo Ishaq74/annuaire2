@@ -1,0 +1,159 @@
+---
+import { Badge } from '@components/starwind/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@components/starwind/avatar';
+import { Button } from '@components/starwind/button';
+import { Icon } from 'astro-icon/components';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import type { Article } from '@lib/magazine'; // On importe notre type propre !
+
+interface Props {
+  article: Article; // Le composant attend maintenant notre type `Article`
+  parentCategorySlug: string; // ex: 'magazine'
+  variant: 'featured' | 'horizontal' | 'compact' | 'simple' | 'related';
+}
+
+const { article, parentCategorySlug, variant } = Astro.props;
+const lang = Astro.currentLocale;
+
+const translations = {
+  fr: { featured: 'À la une', read: "Lire l'article", noAuthor: 'Rédacteur', share: "Partager l'article", min: 'min', views: 'vues' },
+  en: { featured: 'Featured', read: 'Read article', noAuthor: 'Author', share: 'Share article', min: 'min', views: 'views' },
+  es: { featured: 'Destacado', read: 'Leer el artículo', noAuthor: 'Autor', share: 'Compartir el artículo', min: 'min', views: 'vistas' }
+};
+const t = translations[lang] ?? translations.fr;
+
+// Construction d'URL robuste avec l'helper d'Astro !
+const articleUrl = getRelativeLocaleUrl(lang, `${parentCategorySlug}/${article.category.seoSlug}/${article.seoSlug}`);
+
+const formatDate = (dateString?: string) => dateString ? new Date(dateString).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+// Détermination des styles en fonction de la variante
+const styleClasses = {
+  featured: 'overflow-hidden flex flex-col group shadow-sm',
+  horizontal: 'p-4 flex flex-col md:flex-row gap-6 items-center group shadow-sm',
+  compact: 'flex gap-4 items-start',
+  simple: 'p-4 shadow-sm hover:shadow-md transition-shadow',
+  related: 'p-4 shadow-sm hover:shadow-md transition-shadow', // style pour 'related'
+}[variant];
+
+const showSummary = ['featured', 'horizontal', 'related'].includes(variant);
+const showFullMeta = variant === 'featured';
+const showCompactMeta = ['horizontal', 'compact'].includes(variant);
+---
+
+<article class:list={["bg-white rounded-lg border border-gray-100", styleClasses]}>
+  
+  {/* ===== IMAGE SECTION ===== */}
+  {(variant === 'featured' || variant === 'horizontal' || variant === 'compact') && (
+    <a href={articleUrl} class:list={[
+      variant === 'featured' && 'block',
+      variant === 'horizontal' && 'block shrink-0 w-full md:w-auto',
+      variant === 'compact' && 'w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden',
+    ]}>
+      <div class:list={[
+        variant === 'featured' && 'relative w-full h-56',
+        variant === 'horizontal' && 'w-full h-40 md:w-32 md:h-32 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden',
+        variant === 'compact' && 'w-full h-full',
+      ]}>
+        {article.featuredImageUrl ? (
+          <img
+            src={article.featuredImageUrl}
+            alt={article.featuredImageAlt || article.title}
+            class:list={[
+              'w-full h-full object-cover',
+              variant === 'featured' && 'transition-transform duration-300 group-hover:scale-105',
+              variant === 'compact' && 'rounded-lg',
+            ]}
+            loading="lazy"
+          />
+        ) : (
+          <Icon name={article.category.iconName || 'openmoji:newspaper'} class:list={[
+            'text-gray-300',
+            variant === 'featured' && 'h-24 w-24',
+            variant === 'horizontal' && 'h-16 w-16',
+            variant === 'compact' && 'h-8 w-8',
+          ]} />
+        )}
+        {variant === 'featured' && (
+          <div class="absolute top-4 left-4 flex flex-wrap mr-2 gap-2">
+            <Badge variant="primary" size='sm' class="rounded">{t.featured}</Badge>
+            {article.category.name && <Badge variant="secondary" size='sm' class="rounded">{article.category.name}</Badge>}
+          </div>
+        )}
+      </div>
+    </a>
+  )}
+
+  {/* ===== CONTENT SECTION ===== */}
+  <div class:list={[
+    variant === 'featured' && 'p-6 flex-grow flex flex-col',
+    variant === 'horizontal' && 'flex-grow w-full',
+  ]}>
+    {variant === 'horizontal' && article.category.name && <Badge class="mb-2">{article.category.name}</Badge>}
+    
+    <h3 class:list={[
+      'font-bold text-gray-800',
+      variant === 'featured' && 'text-xl mb-2',
+      variant === 'horizontal' && 'text-lg mb-2',
+      variant === 'compact' && 'text-sm line-clamp-2 leading-tight',
+      (variant === 'simple' || variant === 'related') && 'text-base',
+    ]}>
+      <a href={articleUrl} class="hover:text-blue-600 transition-colors">{article.title}</a>
+    </h3>
+
+    {showSummary && (
+      <p class:list={[
+        'text-gray-600 mb-4',
+        variant === 'featured' ? 'flex-grow line-clamp-3' : 'text-sm line-clamp-2',
+      ]}>
+        {article.summary}
+      </p>
+    )}
+
+    {/* --- META DATA --- */}
+    <div class="mt-auto">
+      {showFullMeta && (
+        <div class="border-t border-gray-100 pt-4 flex items-center justify-between text-sm text-gray-500">
+          <div class="flex items-center gap-3">
+            <Avatar class="h-8 w-8">
+              <AvatarImage src={article.author.profileImageUrl} alt={article.author.name} />
+              <AvatarFallback>{article.author.name?.split(' ').map(n => n[0]).join('') || 'A'}</AvatarFallback>
+            </Avatar>
+            <p class="font-semibold text-gray-700">{article.author.name}</p>
+          </div>
+          <div class="flex items-center gap-4">
+            <span class="flex items-center gap-1.5"><Icon name="openmoji:calendar" class="h-4 w-4" /> {formatDate(article.publicationDate)}</span>
+            <span class="flex items-center gap-1.5"><Icon name="openmoji:stopwatch" class="h-4 w-4" /> {article.readTimeMinutes} {t.min}</span>
+          </div>
+        </div>
+      )}
+
+      {showCompactMeta && (
+        <div class="flex items-center justify-between text-sm text-gray-500 gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <Avatar class="h-6 w-6">
+                    <AvatarImage src={article.author.profileImageUrl} alt={article.author.name} />
+                    <AvatarFallback>{article.author.name?.split(' ').map(n => n[0]).join('') || 'A'}</AvatarFallback>
+                </Avatar>
+                <span class="font-medium">{article.author.name}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <Icon name="openmoji:stopwatch" class="h-4 w-4" /> {article.readTimeMinutes} {t.min}
+            </div>
+        </div>
+      )}
+
+      {variant === 'compact' && (
+        <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
+          <Icon name="openmoji:eye" class="h-4 w-4" /> {article.viewCount} {t.views}
+        </div>
+      )}
+
+      {variant === 'featured' && (
+        <div class="mt-6">
+          <Button is="a" href={articleUrl} class="w-full">{t.read}</Button>
+        </div>
+      )}
+    </div>
+  </div>
+</article>

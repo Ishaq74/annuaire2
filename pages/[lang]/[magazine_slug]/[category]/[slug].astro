@@ -1,0 +1,576 @@
+---
+export const prerender = false; // Rendu dynamique car les données dépendent de l'URL
+
+// Importation des composants nécessaires
+import Layout from '@layouts/Layout.astro';
+import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@components/starwind/avatar';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@components/starwind/accordion';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@components/starwind/tabs';
+import { Badge } from '@components/starwind/badge';
+import { Textarea } from '@components/starwind/textarea';
+import { Button } from '@components/starwind/button';
+import { Input } from '@components/starwind/input';
+import { Icon } from 'astro-icon/components';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@components/starwind/breadcrumb';
+import { supabase } from '@lib/supabase';
+import ArticleCard from '@components/blog/ArticleCard.astro';
+import ContributeCard from '@components/blog/ContributeCard.astro';
+import NewsletterCard from '@components/blog/NewsletterCard.astro';
+
+// Interfaces pour structurer les données
+interface ArticleData {
+  id: string;
+  article_title: string;
+  article_summary: string;
+  article_body: string;
+  article_featured_image_url: string | null;
+  article_featured_image_alt: string | null;
+  article_seo_slug: string;
+  publication_date: string;
+  read_time_minutes: number;
+  view_count: number;
+  author_name: string;
+  author_profile_image_url: string | null;
+  author_bio: string | null;
+  author_slug: string;
+  category_id: string;
+  category_name: string;
+  category_seo_slug: string;
+  category_icon_name: string | null;
+}
+
+interface CommentData {
+  id: string;
+  author_name: string;
+  author_email: string;
+  content: string;
+  created_at: string;
+  parent_comment_id: string | null;
+  children: CommentData[];
+}
+
+interface RelatedArticleData {
+  article_title: string;
+  article_seo_slug: string;
+  category_seo_slug: string;
+  article_featured_image_url: string | null;
+}
+
+// Récupération des paramètres d'URL et de la langue
+const { lang } = Astro.locals;
+const params = Astro.params;
+
+const categorySlug = params.category;
+const articleSlug = params.slug;
+
+// ID fixe de la catégorie racine (magazine)
+const magazineCategoryId = 'd20b7566-105a-47f3-947f-dab773bef43e';
+let magazineSlug = 'magazine';
+
+// Récupération de la catégorie racine pour obtenir le slug traduit
+const { data: rootCategory, error: rootError } = await supabase
+  .from('categories')
+  .select(`
+    category_translations!inner(lang_code, seo_slug)
+  `)
+  .eq('id', magazineCategoryId)
+  .single();
+
+if (rootError) {
+  console.error('Erreur récupération catégorie racine:', rootError);
+} else if (rootCategory) {
+  const translation = rootCategory.category_translations.find((t) => t.lang_code === lang);
+  if (translation) {
+    magazineSlug = translation.seo_slug || 'magazine';
+  }
+}
+
+// Récupération de l'article spécifique
+let article = null;
+const { data: articleData, error: articleError } = await supabase
+  .from('articles')
+  .select(`
+    id,
+    publication_date,
+    read_time_minutes,
+    view_count,
+    featured_image_url,
+    article_translations!inner(name, description, content, featured_image_alt, seo_slug, lang_code),
+    authors!inner(id, name, profile_image_url, slug, author_translations!inner(bio, lang_code)),
+    categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
+  `)
+  .eq('article_translations.seo_slug', articleSlug)
+  .eq('categories.category_translations.seo_slug', categorySlug)
+  .eq('article_translations.lang_code', lang)
+  .eq('authors.author_translations.lang_code', lang)
+  .eq('categories.category_translations.lang_code', lang)
+  .single();
+
+if (articleError || !articleData) {
+  console.error('Article non trouvé ou invalide:', articleError);
+} else {
+  article = {
+    id: articleData.id,
+    article_title: articleData.article_translations[0].name,
+    article_summary: articleData.article_translations[0].description,
+    article_body: articleData.article_translations[0].content,
+    article_featured_image_url: articleData.featured_image_url,
+    article_featured_image_alt: articleData.article_translations[0].featured_image_alt,
+    article_seo_slug: articleData.article_translations[0].seo_slug,
+    publication_date: articleData.publication_date,
+    read_time_minutes: articleData.read_time_minutes,
+    view_count: articleData.view_count || 0,
+    author_name: articleData.authors.name || 'Inconnu',
+    author_profile_image_url: articleData.authors.profile_image_url,
+    author_bio: articleData.authors.author_translations[0]?.bio,
+    author_slug: articleData.authors.slug,
+    category_id: articleData.categories.id,
+    category_name: articleData.categories.category_translations[0].name,
+    category_seo_slug: articleData.categories.category_translations[0].seo_slug,
+    category_icon_name: articleData.categories.icon_name,
+  };
+}
+
+// Récupération des commentaires
+let flatComments = [];
+let nestedComments = [];
+if (article) {
+  const { data: commentsData, error: commentsError } = await supabase
+    .from('comments')
+    .select(`
+      id,
+      author_name,
+      author_email,
+      content,
+      created_at,
+      parent_comment_id
+    `)
+    .eq('article_id', article.id)
+    .eq('status', 'approved')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true });
+
+  if (commentsError) {
+    console.error('Erreur récupération commentaires:', commentsError);
+  } else if (commentsData) {
+    flatComments = commentsData;
+
+    // Construire une structure imbriquée pour les commentaires
+    const commentMap = new Map();
+    flatComments.forEach(comment => {
+      comment.children = [];
+      commentMap.set(comment.id, comment);
+    });
+
+    nestedComments = flatComments.filter(comment => !comment.parent_comment_id);
+    flatComments.forEach(comment => {
+      if (comment.parent_comment_id) {
+        const parent = commentMap.get(comment.parent_comment_id);
+        if (parent) {
+          parent.children.push(comment);
+        }
+      }
+    });
+  }
+}
+
+// Récupération des articles dans la même catégorie
+let sameCategoryArticles = [];
+if (article) {
+  const { data: fetchedSameCategoryArticles, error: sameCategoryError } = await supabase
+    .from('articles')
+    .select(`
+      id,
+      article_translations!inner(name, seo_slug, lang_code),
+      categories!inner(id, slug, category_translations!inner(name, seo_slug, lang_code))
+    `)
+    .eq('category_id', article.category_id)
+    .neq('id', article.id)
+    .eq('article_translations.lang_code', lang)
+    .limit(4);
+
+  if (sameCategoryError) {
+    console.error('Erreur récupération articles même catégorie:', sameCategoryError);
+  } else if (fetchedSameCategoryArticles) {
+    sameCategoryArticles = fetchedSameCategoryArticles.map((a) => ({
+      article_title: a.article_translations[0].name,
+      article_seo_slug: a.article_translations[0].seo_slug,
+      category_seo_slug: a.categories.category_translations[0].seo_slug,
+    }));
+  }
+}
+
+// Récupération des articles liés
+let relatedArticles: RelatedArticleData[] = [];
+if (article) {
+  const { data: relatedArticlesData, error: relatedArticlesError } = await supabase
+    .from('article_related_articles')
+    .select(`
+      related_article:articles!related_article_id(
+        id,
+        featured_image_url,
+        article_translations!inner(name, seo_slug, lang_code),
+        categories!inner(category_translations!inner(seo_slug, lang_code))
+      )
+    `)
+    .eq('article_id', article.id)
+    .eq('related_article.article_translations.lang_code', lang)
+    .eq('related_article.categories.category_translations.lang_code', lang)
+    .order('display_order', { ascending: true })
+    .limit(4);
+
+  if (relatedArticlesError) {
+    console.error('Erreur récupération articles liés:', relatedArticlesError);
+  } else if (relatedArticlesData) {
+    relatedArticles = relatedArticlesData.map((rel) => ({
+      article_title: rel.related_article.article_translations[0].name,
+      article_seo_slug: rel.related_article.article_translations[0].seo_slug,
+      category_seo_slug: rel.related_article.categories.category_translations[0].seo_slug,
+      article_featured_image_url: rel.related_article.featured_image_url,
+    }));
+  }
+}
+
+// Script pour gérer la soumission des commentaires
+const submitComment = `
+  async function handleCommentSubmit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const commentData = {
+      article_id: '${article?.id}',
+      author_name: formData.get('author_name'),
+      author_email: formData.get('author_email'),
+      content: formData.get('content'),
+      status: 'PENDING'
+    };
+
+    try {
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(commentData)
+      });
+
+      if (response.ok) {
+        alert('Commentaire envoyé avec succès ! Il sera publié après modération.');
+        form.reset();
+      } else {
+        alert('Erreur lors de l’envoi du commentaire.');
+      }
+    } catch (error) {
+      console.error('Erreur soumission commentaire:', error);
+      alert('Une erreur est survenue. Veuillez réessayer.');
+    }
+  }
+`;
+---
+
+{article ? (
+  <Layout title={article.article_title} lang={lang}>
+    <script>{submitComment}</script>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+        <!-- COLONNE PRINCIPALE DE L'ARTICLE -->
+        <div class="lg:col-span-2">
+          <main>
+            <article>
+
+                
+              <header class="mb-8">
+                <!-- Fil d'Ariane avec slugs dynamiques -->
+                <Breadcrumb class="flex items-center gap-2 text-sm text-gray-500 list-none p-0">
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href={`/${lang}/`} class="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
+                      <Icon name="openmoji:house" class="h-4 w-4" />
+                      <span>Accueil</span>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href={`/${lang}/${magazineSlug}`} class="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
+                      <Icon name="openmoji:newspaper" class="h-4 w-4" />
+                      <span>Magazine</span>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href={`/${lang}/${magazineSlug}/${article.category_seo_slug}`} class="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
+                      <Icon name={article.category_icon_name || 'openmoji:bookmark'} class="h-4 w-4" />
+                      <span>{article.category_name}</span>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem isCurrentPage class="font-semibold text-gray-700 truncate">{article.article_title}</BreadcrumbItem>
+                </Breadcrumb>
+                <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight lg:text-5xl mt-4">{article.article_title}</h1>
+                <p class="mt-4 text-xl text-gray-600">{article.article_summary}</p>
+                <div class="mt-6 flex items-center gap-8 text-sm text-gray-500 border-t border-b py-4">
+                  <div class="flex items-center gap-3">
+                    <Avatar class="h-10 w-10">
+                      <AvatarImage src={article.author_profile_image_url} alt={article.author_name} />
+                      <AvatarFallback>{article.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p class="font-semibold text-gray-800">{article.author_name}</p>
+                      <a href={`/${lang}/auteurs/${article.author_slug}`} class="text-blue-600 hover:underline">Voir profil</a>
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <p><span class="font-semibold">Publié le:</span> {new Date(article.publication_date).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    <p><span class="font-semibold">Temps de lecture:</span> {article.read_time_minutes} min</p>
+                  </div>
+                </div>
+              </header>
+              
+              <div class="prose prose-lg max-w-none">
+                <img src={article.article_featured_image_url} alt={article.article_featured_image_alt} class="rounded-lg shadow-lg mb-8" />
+                <Fragment set:html={article.article_body} />
+              </div>
+            </article>
+
+            <!-- SECTION COMMENTAIRES -->
+            <section class="mt-16 border-t pt-8">
+              <h3 class="text-xl font-bold mb-6">Commentaires ({flatComments?.length || 0})</h3>
+              <div class="space-y-6">
+                {nestedComments?.map(comment => (
+                  <div class="flex gap-4">
+                    <Avatar class="h-10 w-10 mt-1 shrink-0">
+                      <AvatarFallback>{comment.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                    </Avatar>
+                    <div class="bg-gray-100 p-4 rounded-lg flex-grow">
+                      <p class="font-semibold">{comment.author_name}</p>
+                      <p class="text-gray-700">{comment.content}</p>
+                      <p class="text-xs text-gray-500 mt-2">{new Date(comment.created_at).toLocaleString(lang)}</p>
+                      {comment.children.length > 0 && (
+                        <div class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4">
+                          {comment.children.map(child => (
+                            <div class="flex gap-4">
+                              <Avatar class="h-8 w-8 mt-1 shrink-0">
+                                <AvatarFallback>{child.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                              </Avatar>
+                              <div class="flex-grow">
+                                <p class="font-semibold">{child.author_name}</p>
+                                <p class="text-gray-700 text-sm">{child.content}</p>
+                                <p class="text-xs text-gray-500 mt-2">{new Date(child.created_at).toLocaleString(lang)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <h2 class="text-2xl font-bold mt-12 mb-6">Laisser un commentaire</h2>
+              <Card>
+                <CardContent class="p-6">
+                  <form onsubmit="handleCommentSubmit(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input name="author_name" placeholder="Votre nom *" required />
+                      <Input name="author_email" type="email" placeholder="Votre email (ne sera pas publié) *" required />
+                    </div>
+                    <Textarea name="content" placeholder="Votre commentaire *" required rows={5}></Textarea>
+                    <Button type="submit">Envoyer le commentaire</Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </section>
+
+<!-- SECTION COMMENTAIRES -->
+<section class="mt-16 border-t pt-8">
+  <h3 class="text-xl font-bold mb-6">Commentaires ({flatComments?.length || 0})</h3>
+  <div class="space-y-6">
+    {nestedComments?.map(comment => (
+      <div class="flex gap-4">
+        <Avatar class="h-10 w-10 mt-1 shrink-0">
+          <AvatarFallback>{comment.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+        </Avatar>
+        <div class="bg-gray-100 p-4 rounded-lg flex-grow">
+          <p class="font-semibold">{comment.author_name}</p>
+          <p class="text-gray-700">{comment.content}</p>
+          <p class="text-xs text-gray-500 mt-2">{new Date(comment.created_at).toLocaleString(lang)}</p>
+          {comment.children.length > 0 && (
+            <div class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4">
+              {comment.children.map(child => (
+                <div class="flex gap-4">
+                  <Avatar class="h-8 w-8 mt-1 shrink-0">
+                    <AvatarFallback>{child.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                  <div class="flex-grow">
+                    <p class="font-semibold">{child.author_name}</p>
+                    <p class="text-gray-700 text-sm">{child.content}</p>
+                    <p class="text-xs text-gray-500 mt-2">{new Date(child.created_at).toLocaleString(lang)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    ))}
+  </div>
+  <Accordion type="single" collapsible class="mt-12">
+    <AccordionItem value="comment-form">
+      <AccordionTrigger>
+        <h2 class="text-2xl font-bold">Laisser un commentaire</h2>
+      </AccordionTrigger>
+      <AccordionContent>
+        <Card>
+          <CardContent class="p-6">
+            <form onsubmit="handleCommentSubmit(event)" class="space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input name="author_name" placeholder="Votre nom *" required />
+                <Input name="author_email" type="email" placeholder="Votre email (ne sera pas publié) *" required />
+              </div>
+              <Textarea name="content" placeholder="Votre commentaire *" required rows={5}></Textarea>
+              <Button type="submit">Envoyer le commentaire</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </AccordionContent>
+    </AccordionItem>
+  </Accordion>
+</section>
+
+<!-- SECTION COMMENTAIRES -->
+<section class="mt-16 border-t pt-8">
+  <h3 class="text-xl font-bold mb-6">Commentaires ({flatComments?.length || 0})</h3>
+  <Tabs defaultValue="comments" class="w-full">
+    <TabsList class="grid w-full grid-cols-2">
+      <TabsTrigger value="comments">Voir les commentaires</TabsTrigger>
+      <TabsTrigger value="write">Écrire un commentaire</TabsTrigger>
+    </TabsList>
+    <TabsContent value="comments">
+      <div class="space-y-6 mt-6">
+        {nestedComments?.map(comment => (
+          <div class="flex gap-4">
+            <Avatar class="h-10 w-10 mt-1 shrink-0">
+              <AvatarFallback>{comment.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+            </Avatar>
+            <div class="bg-gray-100 p-4 rounded-lg flex-grow">
+              <p class="font-semibold">{comment.author_name}</p>
+              <p class="text-gray-700">{comment.content}</p>
+              <p class="text-xs text-gray-500 mt-2">{new Date(comment.created_at).toLocaleString(lang)}</p>
+              {comment.children.length > 0 && (
+                <div class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4">
+                  {comment.children.map(child => (
+                    <div class="flex gap-4">
+                      <Avatar class="h-8 w-8 mt-1 shrink-0">
+                        <AvatarFallback>{child.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                      </Avatar>
+                      <div class="flex-grow">
+                        <p class="font-semibold">{child.author_name}</p>
+                        <p class="text-gray-700 text-sm">{child.content}</p>
+                        <p class="text-xs text-gray-500 mt-2">{new Date(child.created_at).toLocaleString(lang)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </TabsContent>
+    <TabsContent value="write">
+      <Card class="mt-6">
+        <CardContent class="p-6">
+          <h2 class="text-2xl font-bold mb-6">Laisser un commentaire</h2>
+          <form onsubmit="handleCommentSubmit(event)" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input name="author_name" placeholder="Votre nom *" required />
+              <Input name="author_email" type="email" placeholder="Votre email (ne sera pas publié) *" required />
+            </div>
+            <Textarea name="content" placeholder="Votre commentaire *" required rows={5}></Textarea>
+            <Button type="submit">Envoyer le commentaire</Button>
+          </form>
+        </CardContent>
+      </Card>
+    </TabsContent>
+  </Tabs>
+</section>
+
+
+            <!-- SECTION DANS LA MÊME CATÉGORIE -->
+            {sameCategoryArticles.length > 0 && (
+              <section class="mt-16 border-t pt-8">
+                <h2 class="text-2xl font-bold mb-6">Dans la même catégorie</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {sameCategoryArticles.map(related => {
+                    const relatedUrl = `/${lang}/${magazineSlug}/${related.category_seo_slug}/${related.article_seo_slug}`;
+                    return (
+                <ArticleCard
+                  article={related}
+                  lang={lang}
+                  magazineSlug={magazineSlug}
+                  variantData="related"
+                  variantStyle="horizontal"
+                />
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </main>
+        </div>
+
+        <!-- COLONNE LATÉRALE (SIDEBAR) -->
+        <div class="mt-12 lg:mt-0">
+          <aside class="space-y-8 sticky top-8">
+            <!-- WIDGET AUTEUR -->
+            <Card>
+              <CardHeader class="text-center">
+                <a href={`/${lang}/auteurs/${article.author_slug}`} class="inline-block">
+                  <Avatar class="h-20 w-20 mx-auto border-4 border-white shadow-md">
+                    <AvatarImage src={article.author_profile_image_url} alt={article.author_name} />
+                    <AvatarFallback>{article.author_name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                </a>
+                <CardTitle class="mt-4">{article.author_name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p class="text-sm text-gray-600 text-center italic line-clamp-4">{article.author_bio}</p>
+                <Button is="a" href={`/${lang}/auteurs/${article.author_slug}`} variant="outline" size="sm" class="w-full mt-4">Voir tous ses articles</Button>
+              </CardContent>
+            </Card>
+
+            <!-- WIDGET ARTICLES LIÉS -->
+            {relatedArticles.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle class="flex items-center gap-2"><Icon name="openmoji:link" class="h-5 w-5" /> Lire aussi</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul class="space-y-4">
+                    {relatedArticles.map(related => {
+                      const relatedUrl = `/${lang}/${magazineSlug}/${related.category_seo_slug}/${related.article_seo_slug}`;
+                      return (
+                <ArticleCard
+                  article={related}
+                  lang={lang}
+                  magazineSlug={magazineSlug}
+                  variantData="related"
+                  variantStyle="horizontal"
+                />
+                      );
+                    })}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+                    <NewsletterCard />
+
+        <ContributeCard />
+          </aside>
+        </div>
+      </div>
+    </div>
+  </Layout>
+) : (
+  <div class="text-center py-16">
+    <h1 class="text-2xl font-bold text-gray-800">Article non trouvé</h1>
+    <p class="text-gray-600 mt-2">Vérifiez l’URL ou explorez d’autres articles.</p>
+  </div>
+)}

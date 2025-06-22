@@ -1,0 +1,29 @@
+{
+  "extends": "astro/tsconfigs/strict",
+    "compilerOptions": {
+    "types": ["astro-font"],
+    "strictNullChecks": true,
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "@pages-renderers/*": ["src/pages-renderers/*"],
+      "@fonts/*": ["src/fonts/*"],
+      "@components/*": ["src/components/*"],
+      "@atoms/*": ["src/components/atoms/*"],
+      "@molecules/*": ["src/components/molecules/*"],
+      "@organisms/*": ["src/components/organisms/*"],
+      "@templates/*": ["src/components/templates/*"],
+      "@navigations/*": ["src/components/navigations/*"],
+      "@cards/*": ["src/components/cards/*"],
+      "@styles/*": ["src/styles/*"],
+      "@layouts/*": ["src/layouts/*"],
+      "@partials/*": ["src/partials/*"],
+      "@scripts/*": ["src/scripts/*"],
+      "@lib/*": ["src/lib/*"],
+      "@utils/*": ["src/utils/*"],
+      "@i18n/*": ["src/i18n/*"],
+    }
+  },
+  "include": [".astro/types.d.ts", "**/*"],
+  "exclude": ["dist"]
+}

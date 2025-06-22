@@ -1,0 +1,147 @@
+---
+import { Badge } from '@components/starwind/badge';
+import { Button } from '@components/starwind/button';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  accommodation: {
+    id?: string;
+    name: string;
+    summary?: string;
+    main_image_url?: string | null;
+    seo_slug: string;
+    price_per_night?: number;
+    capacity?: number;
+    category_name?: string;
+    category_seo_slug: string;
+  };
+  lang: string;
+  hebergementsSlug: string;
+  variantData: 'full' | 'recent' | 'popular' | 'minimal' | 'related';
+  variantStyle: 'featured' | 'horizontal' | 'compact' | 'simple';
+}
+
+const { accommodation, lang, hebergementsSlug, variantData, variantStyle } = Astro.props;
+
+const translations = {
+  fr: {
+    featured: 'À la une',
+    book: "Réserver",
+    noDescription: 'Pas de description disponible.',
+    price: 'à partir de',
+    night: '/nuit',
+    capacity: 'personnes',
+  },
+  en: {
+    featured: 'Featured',
+    book: 'Book now',
+    noDescription: 'No description available.',
+    price: 'from',
+    night: '/night',
+    capacity: 'people',
+  },
+  es: {
+    featured: 'Destacado',
+    book: 'Reservar',
+    noDescription: 'Sin descripción disponible.',
+    price: 'desde',
+    night: '/noche',
+    capacity: 'personas',
+  }
+};
+const t = translations[lang] ?? translations.fr;
+
+const accommodationUrl = `/${lang}/${hebergementsSlug}/${accommodation.category_seo_slug}/${accommodation.seo_slug}`;
+const defaultImage = `https://placehold.co/800x500/e2e8f0/64748b?text=Hébergement`;
+---
+
+<article class={`
+  bg-white rounded-lg border border-gray-100
+  ${variantStyle === 'featured' ? 'overflow-hidden flex flex-col group shadow-sm' : ''}
+  ${variantStyle === 'horizontal' ? 'p-4 flex flex-col md:flex-row gap-6 items-center group shadow-sm' : ''}
+  ${variantStyle === 'compact' ? 'flex gap-4 items-start' : ''}
+  ${variantStyle === 'simple' ? 'p-4 shadow-sm hover:shadow-md transition-shadow' : ''}
+`}>
+  {(variantStyle === 'featured' || variantStyle === 'horizontal' || variantStyle === 'compact') && (
+    <a href={accommodationUrl} class={`
+      ${variantStyle === 'featured' ? 'block' : ''}
+      ${variantStyle === 'horizontal' ? 'block shrink-0 w-full md:w-auto' : ''}
+      ${variantStyle === 'compact' ? 'w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden' : ''}
+    `}>
+      <div class={`
+        ${variantStyle === 'featured' ? 'relative w-full h-56' : ''}
+        ${variantStyle === 'horizontal' ? 'w-full h-40 md:w-32 md:h-32 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden' : ''}
+        ${variantStyle === 'compact' ? 'w-full h-full' : ''}
+      `}>
+        {accommodation.main_image_url ? (
+          <img
+            src={accommodation.main_image_url}
+            alt={accommodation.name}
+            class={`
+              ${variantStyle === 'featured' ? 'w-full h-full object-cover transition-transform duration-300 group-hover:scale-105' : ''}
+              ${variantStyle === 'horizontal' ? 'w-full h-full object-cover' : ''}
+              ${variantStyle === 'compact' ? 'w-full h-full object-cover rounded-lg' : ''}
+            `}
+            loading="lazy"
+          />
+        ) : (
+          <Icon name="openmoji:bed" class={`
+            ${variantStyle === 'featured' ? 'h-24 w-24 text-gray-300' : ''}
+            ${variantStyle === 'horizontal' ? 'h-16 w-16 text-gray-300' : ''}
+            ${variantStyle === 'compact' ? 'h-8 w-8 text-gray-300' : ''}
+          `} />
+        )}
+        {variantStyle === 'featured' && (
+          <div class="absolute top-4 left-4 flex flex-wrap mr-2 gap-2">
+            <Badge variant="primary" size='sm' class="rounded">{t.featured}</Badge>
+            {accommodation.category_name && <Badge variant="secondary" size='sm' class="rounded">{accommodation.category_name}</Badge>}
+          </div>
+        )}
+      </div>
+    </a>
+  )}
+
+  <div class={`
+    ${variantStyle === 'featured' ? 'p-6 flex-grow flex flex-col' : ''}
+    ${variantStyle === 'horizontal' ? 'flex-grow w-full' : ''}
+    ${variantStyle === 'compact' ? '' : ''}
+    ${variantStyle === 'simple' ? '' : ''}
+  `}>
+    {variantStyle === 'horizontal' && accommodation.category_name && <Badge class="mb-2">{accommodation.category_name}</Badge>}
+    <h3 class={`
+      font-bold text-gray-800
+      ${variantStyle === 'featured' ? 'text-xl mb-2' : ''}
+      ${variantStyle === 'horizontal' ? 'text-lg mb-2' : ''}
+      ${variantStyle === 'compact' ? 'text-sm line-clamp-2 leading-tight' : ''}
+      ${variantStyle === 'simple' ? 'text-base' : ''}
+    `}>
+      <a href={accommodationUrl} class="hover:text-blue-600 transition-colors">{accommodation.name}</a>
+    </h3>
+
+    {(variantData === 'full' || variantData === 'recent') && (
+      <p class={`
+        text-gray-600 mb-4
+        ${variantStyle === 'featured' ? 'flex-grow line-clamp-3' : 'text-sm line-clamp-2'}
+      `}>
+        {accommodation.summary || t.noDescription}
+      </p>
+    )}
+
+    {(variantData === 'full' || variantData === 'recent') && (
+      <div class="text-sm text-gray-500">
+        {accommodation.price_per_night && (
+          <p>{t.price} {accommodation.price_per_night}€ {t.night}</p>
+        )}
+        {accommodation.capacity && (
+          <p>{accommodation.capacity} {t.capacity}</p>
+        )}
+      </div>
+    )}
+
+    {variantStyle === 'featured' && (
+      <div class="mt-6">
+        <Button is="a" href={accommodationUrl} class="w-full">{t.book}</Button>
+      </div>
+    )}
+  </div>
+</article>

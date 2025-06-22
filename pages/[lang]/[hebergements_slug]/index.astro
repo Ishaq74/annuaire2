@@ -1,0 +1,199 @@
+---
+export const prerender = false;
+
+import Layout from '@layouts/Layout.astro';
+import { supabase } from '@lib/supabase';
+import PageHeader from '@components/blog/PageHeader.astro';
+import AccommodationCard from '@components/accommodation/AccommodationCard.astro';
+import AccommodationCategoriesWithCount from '@components/accommodation/AccommodationCategoriesWithCount.astro';
+
+interface AccommodationData {
+  id: string;
+  name: string;
+  summary: string;
+  main_image_url: string | null;
+  seo_slug: string;
+  price_per_night: number;
+  capacity: number;
+  category_id: string;
+  category_name: string;
+  category_seo_slug: string;
+}
+
+const { lang, pageContext } = Astro.locals;
+
+if (!pageContext || pageContext.type !== 'category') {
+  throw new Error('Page context non défini ou non de type category');
+}
+
+const categoryId = pageContext.entityId;
+
+let pageTitle = '';
+let categorySlug = '';
+let categoryDescription: string | null = null;
+
+let featuredAccommodations: AccommodationData[] = [];
+let recentAccommodations: AccommodationData[] = [];
+
+// Récupération dynamique de la catégorie racine
+const { data: rootCategory, error: rootError } = await supabase
+  .from('categories')
+  .select(`
+    category_translations!inner(lang_code, name, seo_slug, description)
+  `)
+  .eq('id', categoryId)
+  .single();
+
+if (rootError) {
+  console.error('Erreur récupération catégorie racine:', rootError);
+} else if (rootCategory) {
+  const translation = rootCategory.category_translations.find((t: any) => t.lang_code === lang);
+  if (translation) {
+    pageTitle = translation.name;
+    categoryDescription = translation.description;
+    categorySlug = translation.seo_slug || '';
+  }
+}
+
+// Récupération des sous-catégories pour filtrer les hébergements
+const { data: subCategories, error: subCatError } = await supabase
+  .from('categories')
+  .select('id')
+  .eq('parent_id', categoryId);
+
+if (subCatError) {
+  console.error('Erreur récupération sous-catégories:', subCatError);
+}
+
+const subCategoryIds = subCategories?.map(c => c.id) || [];
+
+// Récupération des hébergements en vedette
+const { data: fetchedFeatured, error: featuredError } = await supabase
+  .from('places')
+  .select(`
+    id,
+    main_image_url,
+    place_translations!inner(lang_code, name, description, seo_slug),
+    details_accommodation(price_per_night, capacity),
+    categories!inner(id, category_translations!inner(name, seo_slug, lang_code))
+  `)
+  .eq('is_featured', true)
+  .in('category_id', subCategoryIds)
+  .eq('place_translations.lang_code', lang)
+  .eq('categories.category_translations.lang_code', lang)
+  .order('created_at', { ascending: false })
+  .limit(4);
+
+if (featuredError) {
+  console.error('Erreur récupération hébergements en vedette:', featuredError);
+} else if (fetchedFeatured) {
+  featuredAccommodations = fetchedFeatured.map((place: any) => ({
+    id: place.id,
+    name: place.place_translations[0].name,
+    summary: place.place_translations[0].description,
+    main_image_url: place.main_image_url,
+    seo_slug: place.place_translations[0].seo_slug,
+    price_per_night: place.details_accommodation?.price_per_night || 0,
+    capacity: place.details_accommodation?.capacity || 1,
+    category_id: place.categories.id,
+    category_name: place.categories.category_translations[0].name,
+    category_seo_slug: place.categories.category_translations[0].seo_slug,
+  }));
+}
+
+// Récupération des hébergements récents
+const { data: fetchedRecent, error: recentError } = await supabase
+  .from('places')
+  .select(`
+    id,
+    main_image_url,
+    place_translations!inner(lang_code, name, description, seo_slug),
+    details_accommodation(price_per_night, capacity),
+    categories!inner(id, category_translations!inner(name, seo_slug, lang_code))
+  `)
+  .in('category_id', subCategoryIds)
+  .eq('place_translations.lang_code', lang)
+  .eq('categories.category_translations.lang_code', lang)
+  .order('created_at', { ascending: false })
+  .limit(6);
+
+if (recentError) {
+  console.error('Erreur récupération hébergements récents:', recentError);
+} else if (fetchedRecent) {
+  recentAccommodations = fetchedRecent.map((place: any) => ({
+    id: place.id,
+    name: place.place_translations[0].name,
+    summary: place.place_translations[0].description,
+    main_image_url: place.main_image_url,
+    seo_slug: place.place_translations[0].seo_slug,
+    price_per_night: place.details_accommodation?.price_per_night || 0,
+    capacity: place.details_accommodation?.capacity || 1,
+    category_id: place.categories.id,
+    category_name: place.categories.category_translations[0].name,
+    category_seo_slug: place.categories.category_translations[0].seo_slug,
+  }));
+}
+---
+
+<Layout title={pageTitle} lang={lang}>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <PageHeader
+      title={pageTitle}
+      description={categoryDescription || "Découvrez nos hébergements à Annecy et ses environs."}
+      lang={lang}
+      magazineSlug={categorySlug}
+      breadcrumbItems={[
+        { label: lang === 'fr' ? 'Accueil' : 'Home', url: `/${lang}/`, icon: 'openmoji:house' },
+        { label: pageTitle, icon: 'openmoji:bed', isCurrent: true },
+      ]}
+    />
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
+      <div class="lg:col-span-2">
+        <section class="mb-12">
+          <h2 class="text-3xl font-bold text-gray-800 mb-6">À la une</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {featuredAccommodations.length > 0 ? (
+              featuredAccommodations.map(place => (
+                <AccommodationCard
+                  accommodation={place}
+                  lang={lang}
+                  hebergementsSlug={categorySlug}
+                  variantData="full"
+                  variantStyle="featured"
+                />
+              ))
+            ) : (
+              <p class="text-gray-500 col-span-2">Aucun hébergement en vedette pour le moment.</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-3xl font-bold text-gray-800 mb-6">Hébergements récents</h2>
+          <div class="space-y-6">
+            {recentAccommodations.length > 0 ? (
+              recentAccommodations.map(place => (
+                <AccommodationCard
+                  accommodation={place}
+                  lang={lang}
+                  hebergementsSlug={categorySlug}
+                  variantData="recent"
+                  variantStyle="horizontal"
+                />
+              ))
+            ) : (
+              <p class="text-gray-500">Aucun hébergement récent pour le moment.</p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div class="mt-12 lg:mt-0">
+        <aside class="space-y-8 sticky top-8">
+          <AccommodationCategoriesWithCount parentId={categoryId} />
+        </aside>
+      </div>
+    </div>
+  </main>
+</Layout>

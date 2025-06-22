@@ -1,0 +1,48 @@
+---
+import { Card, CardContent } from '@components/starwind/card';
+import { Button } from '@components/starwind/button';
+import { Icon } from 'astro-icon/components';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+
+// On utilise Astro.currentLocale, c'est la méthode standard.
+const lang = Astro.currentLocale;
+
+const texts = {
+  fr: {
+    title: "Contribuer",
+    description: "Vous avez une histoire à partager ? Rejoignez notre équipe !",
+    button: "Proposer un article",
+    // On ne définit plus l'URL ici, juste le slug de la page cible.
+    buttonSlug: "proposer-article" 
+  },
+  en: {
+    title: "Contribute",
+    description: "Have a story to share? Join our team!",
+    button: "Submit an article",
+    buttonSlug: "submit-article" // Le slug peut être différent par langue
+  },
+  es: {
+    title: "Contribuir",
+    description: "¿Tienes una historia que contar? ¡Únete a nuestro equipo!",
+    button: "Proponer un artículo",
+    buttonSlug: "proponer-articulo"
+  }
+};
+
+const t = texts[lang] ?? texts.fr;
+
+// On construit l'URL proprement avec l'helper d'Astro
+const buttonHref = getRelativeLocaleUrl(lang, t.buttonSlug);
+---
+
+<Card class="bg-blue-50 border-blue-200 text-center">
+  <CardContent class="p-6">
+    <Icon name="openmoji:writing-hand" class="h-10 w-10 mx-auto mb-2 text-blue-600" />
+    <h3 class="font-bold text-lg text-gray-800">{t.title}</h3>
+    <p class="text-sm text-gray-600 mt-1 mb-4">{t.description}</p>
+    <Button variant="outline" is="a" href={buttonHref}>
+      <Icon name="openmoji:fountain-pen" class="h-4 w-4 mr-2" />
+      {t.button}
+    </Button>
+  </CardContent>
+</Card>
