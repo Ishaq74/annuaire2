@@ -18,6 +18,15 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
+declare namespace App {
+  interface Locals {
+    session: any;
+    user: any;
+    userWithRoles: any;
+    lang: string;
+  }
+}
+
 export interface Category {
   id: number;
   is_active: boolean;

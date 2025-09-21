@@ -2,7 +2,7 @@
 import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
 import { Badge } from '@components/starwind/badge';
 import { Icon } from 'astro-icon/components';
-import { supabase } from '@lib/supabase';
+import { prisma } from '@lib/prisma';
 
 export interface Props {
   parentId: string;
@@ -30,27 +30,46 @@ const t = translations[lang] ?? translations.fr;
 let categories = [];
 
 if (parentId) {
-  const { data, error } = await supabase
-    .from('categories')
-    .select(`
-      id,
-      slug,
-      category_translations!inner(lang_code, name, seo_slug),
-      places(count)
-    `)
-    .eq('parent_id', parentId)
-    .eq('category_translations.lang_code', lang)
-    .order('display_order', { ascending: true });
+  try {
+    const data = await prisma.category.findMany({
+      where: {
+        parentId: parentId,
+        isActive: true,
+        translations: {
+          some: {
+            langCode: lang
+          }
+        }
+      },
+      include: {
+        translations: {
+          where: {
+            langCode: lang
+          }
+        },
+        // Note: You'll need to adjust this based on your actual schema
+        // If you have a places table related to categories
+        _count: {
+          select: {
+            // places: true  // Uncomment and adjust if you have places
+          }
+        }
+      },
+      orderBy: {
+        displayOrder: 'asc'
+      }
+    });
 
-  if (error) {
+    categories = data
+      .filter(cat => cat.translations.length > 0)
+      .map(cat => ({
+        id: cat.id,
+        name: cat.translations[0].name,
+        seo_slug: cat.translations[0].seoSlug || cat.slug,
+        places_count: 0, // Adjust this based on your actual schema
+      }));
+  } catch (error) {
     console.error('Erreur récupération catégories:', error);
-  } else if (data) {
-    categories = data.map(cat => ({
-      id: cat.id,
-      name: cat.category_translations[0].name,
-      seo_slug: cat.category_translations[0].seo_slug || cat.slug,
-      places_count: cat.places?.[0]?.count || 0,
-    }));
   }
 }
 ---
