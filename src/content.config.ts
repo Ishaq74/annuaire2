@@ -1,11 +1,11 @@
 // src/content/loaders.ts
 // FICHIER COMPLET
 
-import { supabase } from '@lib/supabase';
+import { prisma } from '@lib/prisma';
 
 // Cette fonction est appelée une seule fois par Astro au moment de la construction du site.
-export async function supabaseLoader() {
-    console.log("Chargement de TOUTES les données depuis Supabase pour la construction du site...");
+export async function prismaLoader() {
+    console.log("Chargement de TOUTES les données depuis Prisma pour la construction du site...");
 
     const [
         categoriesRes,
@@ -14,23 +14,54 @@ export async function supabaseLoader() {
         relatedArticlesRes,
         commentsRes
     ] = await Promise.all([
-        supabase.from('categories').select('*, category_translations(*)'),
-        supabase.from('article_details_view').select('*').eq('status', 'published').is('article_deleted_at', null),
-        supabase.from('authors').select('*, author_translations(*)'),
-        supabase.from('article_related_articles').select('*'),
-        supabase.from('comments').select('*').eq('status', 'approved')
+        prisma.category.findMany({
+            include: {
+                translations: true
+            }
+        }),
+        prisma.article.findMany({
+            where: {
+                status: 'published',
+                deletedAt: null
+            },
+            include: {
+                translations: true,
+                author: {
+                    include: {
+                        profile: true
+                    }
+                },
+                category: {
+                    include: {
+                        translations: true
+                    }
+                }
+            }
+        }),
+        prisma.user.findMany({
+            include: {
+                profile: true
+            }
+        }),
+        prisma.articleRelation.findMany(),
+        prisma.comment.findMany({
+            where: {
+                status: 'approved',
+                deletedAt: null
+            }
+        })
     ]);
 
     // On joint les données manuellement ici, c'est plus robuste
-    const articlesData = articlesRes.data?.map(article => {
-        const related = relatedArticlesRes.data?.filter(r => r.article_id === article.article_id).map(r => r.related_article_id) ?? [];
-        const comments = commentsRes.data?.filter(c => c.article_id === article.article_id) ?? [];
+    const articlesData = articlesRes.map(article => {
+        const related = relatedArticlesRes.filter(r => r.articleId === article.id).map(r => r.relatedArticleId) ?? [];
+        const comments = commentsRes.filter(c => c.articleId === article.id) ?? [];
         return { ...article, related_ids: related, comments };
     }) ?? [];
 
     return {
-        categories: categoriesRes.data ?? [],
+        categories: categoriesRes ?? [],
         articles: articlesData,
-        authors: authorsRes.data ?? [],
+        authors: authorsRes ?? [],
     };
 }

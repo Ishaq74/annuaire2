@@ -1,12 +1,30 @@
 /// <reference types="astro/client" />
 
 interface ImportMetaEnv {
-  readonly SUPABASE_URL: string
-  readonly SUPABASE_ANON_KEY: string
+  readonly DATABASE_URL: string
+  readonly BETTER_AUTH_SECRET: string
+  readonly BETTER_AUTH_URL: string
+  readonly SMTP_HOST: string
+  readonly SMTP_PORT: string
+  readonly SMTP_USER: string
+  readonly SMTP_PASS: string
+  readonly SMTP_FROM: string
+  readonly SMTP_FROM_NAME: string
+  readonly OTP_EXPIRES_IN: string
+  readonly ADMIN_EMAIL: string
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv
+}
+
+declare namespace App {
+  interface Locals {
+    session: any;
+    user: any;
+    userWithRoles: any;
+    lang: string;
+  }
 }
 
 export interface Category {

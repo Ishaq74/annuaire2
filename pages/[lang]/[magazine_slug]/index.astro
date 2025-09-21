@@ -1,5 +1,5 @@
 ---
-export const prerender = false; // Set to false to render dynamically on each request
+export const prerender = false;
 
 import Layout from '@layouts/Layout.astro';
 import { Card, CardHeader, CardContent, CardTitle } from '@components/starwind/card';
@@ -9,320 +9,244 @@ import { Button } from '@components/starwind/button';
 import { Input } from '@components/starwind/input';
 import { Icon } from 'astro-icon/components';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@components/starwind/breadcrumb';
-import { supabase } from '@lib/supabase';
+import { getMagazineIndexPageData } from '@lib/magazine';
 import PageHeader from '@components/blog/PageHeader.astro';
 import ArticleCard from '@components/blog/ArticleCard.astro';
 import NewsletterCard from '@components/blog/NewsletterCard.astro';
 import ContributeCard from '@components/blog/ContributeCard.astro';
 import CategoriesWithCount from '@components/blog/CategoriesWithCount.astro';
 
-interface ArticleData {
-  id: string;
-  article_title: string;
-  article_summary: string;
-  article_featured_image_url: string | null;
-  article_featured_image_alt: string | null;
-  article_seo_slug: string;
-  publication_date: string;
-  read_time_minutes: number;
-  view_count: number;
-  author_name: string;
-  author_profile_image_url: string | null;
-  author_bio: string | null;
-  category_id: string;
-  category_name: string;
-  category_seo_slug: string;
-  category_icon_name: string | null;
-}
-
-interface SidebarCategory {
-  id: string;
-  name: string;
-  seo_slug: string;
-  articles_count: number;
-}
-
 const { lang } = Astro.locals;
+const { magazine_slug } = Astro.params;
 
-// ID fixe de la catégorie racine magazine
-const magazineCategoryId = 'd20b7566-105a-47f3-947f-dab773bef43e';
-
-let pageTitle = 'Magazine';
-let magazineCategoryIcon: string | null = null;
-let magazineCategoryDescription: string | null = null;
-let magazineSlug: string = 'magazine'; // Valeur par défaut
-
-let featuredArticles: ArticleData[] = [];
-let recentArticles: ArticleData[] = [];
-let sidebarCategories: SidebarCategory[] = [];
-let sidebarPopularArticles: ArticleData[] = [];
-
-//
-// 1. Récupération de la catégorie racine magazine avec traduction selon langue
-//
-const { data: rootCategory, error: rootError } = await supabase
-  .from('categories')
-  .select(`
-    icon_name,
-    category_translations!inner(lang_code, name, seo_slug, description)
-  `)
-  .eq('id', magazineCategoryId)
-  .single();
-
-if (rootError) {
-  console.error('Erreur récupération catégorie racine magazine:', rootError);
-} else if (rootCategory) {
-  magazineCategoryIcon = rootCategory.icon_name;
-  const translation = rootCategory.category_translations.find((t: any) => t.lang_code === lang);
-  if (translation) {
-    pageTitle = translation.name;
-    magazineCategoryDescription = translation.description;
-    magazineSlug = translation.seo_slug || 'magazine'; // Récupère le slug traduit
-  }
+// Get magazine data using the new service
+let magazineData;
+try {
+  magazineData = await getMagazineIndexPageData(lang, magazine_slug as string);
+} catch (error) {
+  console.error('Error fetching magazine data:', error);
+  // Handle 404 or redirect
+  return new Response(null, { status: 404 });
 }
 
-//
-// 2. Récupération des catégories enfants (sous-catégories) avec nombre d’articles
-//
-const { data: fetchedSidebarCategories, error: sidebarCatError } = await supabase
-  .from('categories')
-  .select(`
-    id,
-    slug,
-    category_translations!inner(lang_code, name, seo_slug),
-    articles(count)
-  `)
-  .eq('parent_id', magazineCategoryId)
-  .eq('category_translations.lang_code', lang)
-  .order('display_order', { ascending: true });
+const {
+  pageTitle,
+  pageDescription,
+  pageIcon,
+  parentCategorySlug,
+  featuredArticles,
+  recentArticles,
+  sidebarCategories,
+  sidebarPopularArticles
+} = magazineData;
 
-if (sidebarCatError) {
-  console.error('Erreur récupération catégories sidebar:', sidebarCatError);
-} else if (fetchedSidebarCategories) {
-  sidebarCategories = fetchedSidebarCategories.map((cat: any) => ({
-    id: cat.id as string,
-    name: cat.category_translations[0].name as string,
-    seo_slug: (cat.category_translations[0].seo_slug || cat.slug) as string,
-    articles_count: cat.articles?.[0]?.count || 0,
-  }));
-}
+// Transform articles to match the expected interface for components
+const transformedFeaturedArticles = featuredArticles.map(article => ({
+  id: article.id,
+  article_title: article.title,
+  article_summary: article.summary,
+  article_featured_image_url: article.featuredImageUrl,
+  article_featured_image_alt: article.featuredImageAlt,
+  article_seo_slug: article.seoSlug,
+  publication_date: article.publicationDate,
+  read_time_minutes: article.readTimeMinutes,
+  view_count: article.viewCount,
+  author_name: article.author.name,
+  author_profile_image_url: article.author.profileImageUrl,
+  author_bio: article.author.bio,
+  category_id: article.category.id,
+  category_name: article.category.name,
+  category_seo_slug: article.category.seoSlug,
+  category_icon_name: article.category.iconName,
+}));
 
-// 3. Récupération des articles "featured"
-const { data: fetchedFeaturedArticles, error: featuredError } = await supabase
-  .from('articles')
-  .select(`
-    id,
-    publication_date,
-    read_time_minutes,
-    view_count,
-    featured_image_url,
-    article_translations!inner(name, description, featured_image_alt, seo_slug, lang_code),
-    authors!inner(id, name, profile_image_url, author_translations!inner(bio, lang_code)),
-    categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
-  `)
-  .eq('is_featured', true)
-  .in('category_id', sidebarCategories.map(c => c.id))
-  .eq('article_translations.lang_code', lang)
-  .eq('authors.author_translations.lang_code', lang)  // Filtrer via authors
-  .order('publication_date', { ascending: false })
-  .limit(4);
+const transformedRecentArticles = recentArticles.map(article => ({
+  id: article.id,
+  article_title: article.title,
+  article_summary: article.summary,
+  article_featured_image_url: article.featuredImageUrl,
+  article_featured_image_alt: article.featuredImageAlt,
+  article_seo_slug: article.seoSlug,
+  publication_date: article.publicationDate,
+  read_time_minutes: article.readTimeMinutes,
+  view_count: article.viewCount,
+  author_name: article.author.name,
+  author_profile_image_url: article.author.profileImageUrl,
+  author_bio: article.author.bio,
+  category_id: article.category.id,
+  category_name: article.category.name,
+  category_seo_slug: article.category.seoSlug,
+  category_icon_name: article.category.iconName,
+}));
 
-if (featuredError) {
-  console.error('Erreur récupération articles featured:', featuredError);
-} else if (fetchedFeaturedArticles) {
-  featuredArticles = fetchedFeaturedArticles.map((article: any) => ({
-    id: article.id as string,
-    article_title: article.article_translations[0].name as string,
-    article_summary: article.article_translations[0].description as string,
-    article_featured_image_url: article.featured_image_url as string | null,
-    article_featured_image_alt: article.article_translations[0].featured_image_alt as string | null,
-    article_seo_slug: article.article_translations[0].seo_slug as string,
-    publication_date: article.publication_date as string,
-    read_time_minutes: article.read_time_minutes as number,
-    view_count: parseInt(article.view_count, 10) || 0,
-    author_name: article.authors.name || 'Inconnu',
-    author_profile_image_url: article.authors.profile_image_url as string | null,
-    author_bio: article.authors.author_translations[0]?.bio as string | null,
-    category_id: article.categories.id as string,
-    category_name: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.name || '',
-    category_seo_slug: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.seo_slug || article.categories.slug,
-    category_icon_name: article.categories.icon_name as string | null,
-  }));
-}
+const transformedSidebarCategories = sidebarCategories.map(cat => ({
+  id: cat.id,
+  name: cat.name,
+  seo_slug: cat.seoSlug,
+  articles_count: cat.articlesCount,
+}));
 
-// 4. Récupération des Articles "récents"
-const { data: fetchedRecentArticles, error: recentError } = await supabase
-  .from('articles')
-  .select(`
-    id,
-    publication_date,
-    read_time_minutes,
-    view_count,
-    featured_image_url,
-    article_translations!inner(name, description, featured_image_alt, seo_slug, lang_code),
-    authors!inner(id, name, profile_image_url, author_translations!inner(bio, lang_code)),
-    categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
-  `)
-  .in('category_id', sidebarCategories.map(c => c.id))
-  .eq('article_translations.lang_code', lang)
-  .eq('authors.author_translations.lang_code', lang)  // Filtrer via authors
-  .order('publication_date', { ascending: false })
-  .limit(6);
-
-if (recentError) {
-  console.error('Erreur récupération articles récents:', recentError);
-} else if (fetchedRecentArticles) {
-  recentArticles = fetchedRecentArticles.map((article: any) => ({
-    id: article.id as string,
-    article_title: article.article_translations[0].name as string,
-    article_summary: article.article_translations[0].description as string,
-    article_featured_image_url: article.featured_image_url as string | null,
-    article_featured_image_alt: article.article_translations[0].featured_image_alt as string | null,
-    article_seo_slug: article.article_translations[0].seo_slug as string,
-    publication_date: article.publication_date as string,
-    read_time_minutes: article.read_time_minutes as number,
-    view_count: parseInt(article.view_count, 10) || 0,
-    author_name: article.authors.name || 'Inconnu',
-    author_profile_image_url: article.authors.profile_image_url as string | null,
-    author_bio: article.authors.author_translations[0]?.bio as string | null,
-    category_id: article.categories.id as string,
-    category_name: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.name || '',
-    category_seo_slug: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.seo_slug || article.categories.slug,
-    category_icon_name: article.categories.icon_name as string | null,
-  }));
-}
-
-// 5. Récupération des articles populaires
-const { data: fetchedPopularArticles, error: popularError } = await supabase
-  .from('articles')
-  .select(`
-    id,
-    view_count,
-    featured_image_url,
-    article_translations!inner(name, seo_slug, lang_code),
-    categories!inner(id, slug, icon_name, category_translations!inner(name, seo_slug, lang_code))
-  `)
-  .in('category_id', sidebarCategories.map(c => c.id))
-  .eq('article_translations.lang_code', lang)
-  .order('view_count', { ascending: false })
-  .limit(5);
-
-if (popularError) {
-  console.error('Erreur récupération articles populaires:', popularError);
-} else if (fetchedPopularArticles) {
-  sidebarPopularArticles = fetchedPopularArticles.map((article: any) => ({
-    id: article.id as string,
-    article_title: article.article_translations[0].name as string,
-    article_summary: '' as string,
-    article_featured_image_url: article.featured_image_url as string | null,
-    article_featured_image_alt: null,
-    article_seo_slug: article.article_translations[0].seo_slug as string,
-    publication_date: '' as string,
-    read_time_minutes: 0,
-    view_count: parseInt(article.view_count, 10) || 0,
-    author_name: '' as string,
-    author_profile_image_url: null,
-    author_bio: null,
-    category_id: article.categories.id as string,
-    category_name: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.name || '',
-    category_seo_slug: article.categories.category_translations.find((t: any) => t.lang_code === lang)?.seo_slug || article.categories.slug,
-    category_icon_name: article.categories.icon_name as string | null,
-  }));
-}
-
-// Helper function for default article images
-const defaultArticleImage = (categoryIcon: string | null) => {
-  const text = categoryIcon ? categoryIcon.replace('openmoji:', '').replace(/-/g, ' ') : 'Article';
-  return `https://placehold.co/800x500/e2e8f0/64748b?text=${text}`;
-};
-
-// Helper function to format dates consistently
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' });
-};
+const transformedSidebarPopularArticles = sidebarPopularArticles.map(article => ({
+  id: article.id,
+  article_title: article.title,
+  article_summary: article.summary,
+  article_featured_image_url: article.featuredImageUrl,
+  article_featured_image_alt: article.featuredImageAlt,
+  article_seo_slug: article.seoSlug,
+  publication_date: article.publicationDate,
+  read_time_minutes: article.readTimeMinutes,
+  view_count: article.viewCount,
+  author_name: article.author.name,
+  author_profile_image_url: article.author.profileImageUrl,
+  author_bio: article.author.bio,
+  category_id: article.category.id,
+  category_name: article.category.name,
+  category_seo_slug: article.category.seoSlug,
+  category_icon_name: article.category.iconName,
+}));
 ---
 
-<Layout title={pageTitle} lang={lang}>
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <PageHeader
+<Layout title={pageTitle} description={pageDescription}>
+  <main class="min-h-screen bg-gray-50">
+    <!-- Breadcrumb Navigation -->
+    <div class="bg-white border-b">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <Breadcrumb>
+          <BreadcrumbItem>
+            <BreadcrumbLink href={`/${lang}/`}>Accueil</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <span class="text-gray-500">{pageTitle}</span>
+          </BreadcrumbItem>
+        </Breadcrumb>
+      </div>
+    </div>
+
+    <!-- Page Header -->
+    <PageHeader 
       title={pageTitle}
-      description={magazineCategoryDescription || "Découvrez les dernières actualités, bons plans et histoires qui font la richesse d'Annecy et de sa région."}
-      lang={lang}
-      magazineSlug={magazineSlug}
-      breadcrumbItems={[
-        { label: lang === 'fr' ? 'Accueil' : lang === 'en' ? 'Home' : 'Inicio', url: `/${lang}/`, icon: 'openmoji:house' },
-        { label: pageTitle, icon: 'openmoji:newspaper', isCurrent: true },
-      ]}
-      icon={magazineCategoryIcon || 'openmoji:books'}
+      description={pageDescription}
+      icon={pageIcon}
     />
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 lg:gap-12">
-      <div class="lg:col-span-2">
-        {/* Featured Articles Section */}
-        <section class="mb-12">
-          <h2 class="text-3xl font-bold text-gray-800 mb-6">À la une</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {featuredArticles.length > 0 ? featuredArticles.map(article => (
-              <ArticleCard
-                article={article}
-                lang={lang}
-                magazineSlug={magazineSlug}
-                variantData="full"
-                variantStyle="featured"
-              />
-            )) : <p class="text-gray-500 col-span-2">Aucun article "À la une" pour le moment.</p>}
-          </div>
-        </section>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <!-- Main Content -->
+        <div class="lg:col-span-3 space-y-12">
+          <!-- Featured Articles -->
+          {transformedFeaturedArticles.length > 0 && (
+            <section>
+              <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                <Icon name="openmoji:star" class="h-6 w-6" />
+                À la une
+              </h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {transformedFeaturedArticles.map(article => (
+                  <ArticleCard
+                    article={article}
+                    lang={lang}
+                    magazineSlug={parentCategorySlug}
+                    variantData="featured"
+                    variantStyle="card"
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
-        {/* Recent Articles Section */}
-        <section>
-          <h2 class="text-3xl font-bold text-gray-800 mb-6">Articles récents</h2>
-          <div class="space-y-6">
-            {recentArticles.length > 0 ? recentArticles.map(article => (
-              <ArticleCard
-                article={article}
-                lang={lang}
-                magazineSlug={magazineSlug}
-                variantData="recent"
-                variantStyle="horizontal"
-              />
-            )) : <p class="text-gray-500">Aucun article récent pour le moment.</p>}
-            {/* Placeholder for "Load more" button - uncomment and implement logic later */}
-            {/* {recentArticles.length > 0 && <Button variant="outline" class="w-full mt-8">Charger plus d'articles</Button>} */}
-          </div>
-        </section>
-      </div>
+          <!-- Recent Articles -->
+          <section>
+            <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Icon name="openmoji:clock" class="h-6 w-6" />
+              Articles récents
+            </h2>
+            {transformedRecentArticles.length > 0 ? (
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {transformedRecentArticles.map(article => (
+                  <ArticleCard
+                    article={article}
+                    lang={lang}
+                    magazineSlug={parentCategorySlug}
+                    variantData="recent"
+                    variantStyle="card"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div class="text-center py-8">
+                <Icon name="openmoji:desert" class="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                <p class="text-gray-600">Aucun article récent pour le moment.</p>
+                <p class="text-gray-500 mt-2">Revenez bientôt ou explorez d'autres catégories !</p>
+              </div>
+            )}
+          </section>
+        </div>
 
-      {/* Sidebar Section */}
-      <div class="mt-12 lg:mt-0">
-        <aside class="space-y-8 sticky top-8">
-          {/* Categories Card */}
-            <CategoriesWithCount parentId={magazineCategoryId} />
-
-          <NewsletterCard />
-
-          {/* Popular Articles Card */}
+        <!-- Sidebar -->
+        <div class="lg:col-span-1 space-y-8">
+          <!-- Categories -->
           <Card>
-            <CardHeader><CardTitle class="flex items-center gap-2"><Icon name="openmoji:rocket" class="h-5 w-5"/> Articles populaires</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle class="flex items-center gap-2">
+                <Icon name="openmoji:file-folder" class="h-5 w-5" />
+                Catégories
+              </CardTitle>
+            </CardHeader>
             <CardContent>
-              <ul class="space-y-4">
-                {sidebarPopularArticles.length > 0 ? sidebarPopularArticles.map(article => (
-                  <li>
-                    <ArticleCard
-                      article={article}
-                      lang={lang}
-                      magazineSlug={magazineSlug}
-                      variantData="popular"
-                      variantStyle="compact"
-                    />
-                  </li>
-                )) : <li class="text-gray-500 text-sm">Aucun article populaire pour le moment.</li>}
-              </ul>
+              {transformedSidebarCategories.length > 0 ? (
+                <ul class="space-y-2">
+                  {transformedSidebarCategories.map(category => (
+                    <li>
+                      <a 
+                        href={`/${lang}/${parentCategorySlug}/${category.seo_slug}`}
+                        class="flex justify-between items-center text-gray-600 hover:text-blue-600 font-medium p-2 -m-2 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <span>{category.name}</span>
+                        <Badge variant="secondary">{category.articles_count}</Badge>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p class="text-gray-500 text-sm">Aucune catégorie disponible.</p>
+              )}
             </CardContent>
           </Card>
 
+          <!-- Popular Articles -->
+          {transformedSidebarPopularArticles.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2">
+                  <Icon name="openmoji:fire" class="h-5 w-5" />
+                  Articles populaires
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul class="space-y-4">
+                  {transformedSidebarPopularArticles.map(article => (
+                    <li>
+                      <ArticleCard
+                        article={article}
+                        lang={lang}
+                        magazineSlug={parentCategorySlug}
+                        variantData="popular"
+                        variantStyle="compact"
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          <!-- Newsletter -->
+          <NewsletterCard />
+
+          <!-- Contribute -->
           <ContributeCard />
-        </aside>
+        </div>
       </div>
     </div>
   </main>
