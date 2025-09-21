@@ -1,37 +1,58 @@
 // src/lib/menu.ts (exemple)
-import { supabase } from "./supabase"; // Votre client supabase
-import type { Category, CategoryTranslation } from "../env"; // Définissez vos types
+import { prisma } from "./prisma"; // Votre client prisma
 
 // Type pour combiner la catégorie et sa traduction
-export interface MenuCategory extends Category {
-  translation: CategoryTranslation;
+export interface MenuCategory {
+  id: string;
+  slug: string;
+  iconName: string | null;
+  isActive: boolean;
+  displayOrder: number | null;
+  parentId: string | null;
+  translation: {
+    name: string;
+    description: string | null;
+    seoSlug: string;
+  };
 }
 
 export async function getMenuItems(lang: string): Promise<MenuCategory[]> {
-  // On récupère les catégories et on fait une JOINTURE
-  // pour n'avoir QUE la traduction pour la langue demandée.
-  const { data, error } = await supabase
-    .from("categories")
-    .select(`
-      *,
-      category_translations!inner(
-        name,
-        description,
-        seo_slug
-      )
-    `)
-    .eq("is_active", true)
-    .eq("category_translations.lang_code", lang)
-    .order("display_order", { ascending: true });
+  // On récupère les catégories avec leurs traductions
+  const categories = await prisma.category.findMany({
+    where: {
+      isActive: true,
+      translations: {
+        some: {
+          langCode: lang
+        }
+      }
+    },
+    include: {
+      translations: {
+        where: {
+          langCode: lang
+        }
+      }
+    },
+    orderBy: {
+      displayOrder: 'asc'
+    }
+  });
 
-  if (error) {
-    console.error("Erreur lors de la récupération du menu:", error);
-    return [];
-  }
-  
-  // Supabase retourne la traduction dans un tableau, on l'aplatit.
-  return data.map(item => ({
-      ...item,
-      translation: item.category_translations[0] 
-  }));
+  // On transforme les données pour correspondre à l'interface
+  return categories
+    .filter(item => item.translations.length > 0)
+    .map(item => ({
+      id: item.id,
+      slug: item.slug,
+      iconName: item.iconName,
+      isActive: item.isActive,
+      displayOrder: item.displayOrder,
+      parentId: item.parentId,
+      translation: {
+        name: item.translations[0].name,
+        description: item.translations[0].description,
+        seoSlug: item.translations[0].seoSlug
+      }
+    }));
 }
