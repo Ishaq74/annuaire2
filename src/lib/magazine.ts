@@ -383,8 +383,8 @@ export async function getCategoryPageData(lang: string, categorySlug: string): P
       name: parentData.translations[0].name,
       seoSlug: parentData.translations[0].seoSlug
     },
-    articles: articles.map(article => transformArticle(article, lang)).filter(Boolean) as Article[],
-    popularArticles: popularArticles.map(article => transformArticle(article, lang)).filter(Boolean) as Article[]
+    articles: articles.map((article: any) => transformArticle(article, lang)).filter(Boolean) as Article[],
+    popularArticles: popularArticles.map((article: any) => transformArticle(article, lang)).filter(Boolean) as Article[]
   };
 }
 
